@@ -103,6 +103,7 @@ async function submitPasswordChange() {
         :to="item.to"
         :prepend-icon="item.icon"
         :title="item.title"
+        :aria-label="item.title"
       >
         <template v-if="item.badge" #append>
           <v-badge color="error" :content="item.badge" inline />
@@ -133,7 +134,7 @@ async function submitPasswordChange() {
     <!-- Menu rapide : palettes -->
     <v-menu>
       <template #activator="{ props }">
-        <v-btn icon="mdi-palette-outline" variant="text" v-bind="props" />
+        <v-btn icon="mdi-palette-outline" variant="text" aria-label="Choisir une palette" v-bind="props" />
       </template>
       <v-list density="compact">
         <v-list-subheader>Palette</v-list-subheader>
@@ -154,7 +155,7 @@ async function submitPasswordChange() {
     <!-- Menu utilisateur -->
     <v-menu>
       <template #activator="{ props }">
-        <v-btn icon="mdi-account-circle-outline" variant="text" v-bind="props" />
+        <v-btn icon="mdi-account-circle-outline" variant="text" aria-label="Ouvrir le menu utilisateur" v-bind="props" />
       </template>
       <v-list density="compact">
         <v-list-item

@@ -205,6 +205,8 @@ onMounted(() => {
         :color="activeFilter === filter.key ? filter.color || 'primary' : undefined"
         :variant="activeFilter === filter.key ? 'flat' : 'outlined'"
         filter
+        :aria-pressed="activeFilter === filter.key"
+        :aria-label="`${filter.label}, ${filterCount(filter.key)} commande(s)`"
         @click="store.setFilter(filter.key)"
       >
         {{ filter.label }}
@@ -214,7 +216,7 @@ onMounted(() => {
 
     <v-progress-linear v-if="loading && !items.length" indeterminate color="primary" class="mb-3" />
 
-    <v-alert v-if="errorCode" type="error" variant="tonal" class="mb-4">
+    <v-alert v-if="errorCode" type="error" variant="tonal" class="mb-4" role="alert">
       <div class="d-flex align-center justify-space-between ga-4">
         <span>La file n’a pas pu être chargée.</span>
         <v-btn variant="text" size="small" @click="store.fetchQueue">Réessayer</v-btn>
@@ -268,7 +270,15 @@ onMounted(() => {
       <p class="text-body-2 text-medium-emphasis mb-0">La file est à jour pour ce filtre.</p>
     </v-sheet>
 
-    <v-card v-else-if="items.length" border flat rounded="lg" class="overflow-hidden">
+    <v-card
+      v-else-if="items.length"
+      border
+      flat
+      rounded="lg"
+      class="attention-table-card overflow-hidden"
+      role="region"
+      aria-label="Commandes nécessitant une décision humaine"
+    >
       <v-data-table-server
         v-model="selectedIds"
         class="attention-table"
@@ -341,6 +351,7 @@ onMounted(() => {
                   variant="text"
                   size="small"
                   :loading="store.mutatingIds.includes(item.id)"
+                  :aria-label="`Confirmer ${item.orderName}`"
                   @click="confirmOrder(item)"
                 />
               </template>
@@ -354,6 +365,7 @@ onMounted(() => {
                   variant="text"
                   size="small"
                   :disabled="store.mutatingIds.includes(item.id)"
+                  :aria-label="`Relancer ${item.orderName}`"
                   @click="remindOrder(item)"
                 />
               </template>
@@ -367,6 +379,7 @@ onMounted(() => {
                   variant="text"
                   size="small"
                   :disabled="store.mutatingIds.includes(item.id)"
+                  :aria-label="`Annuler ${item.orderName}`"
                   @click="pendingCancellation = item"
                 />
               </template>
@@ -376,7 +389,7 @@ onMounted(() => {
       </v-data-table-server>
     </v-card>
 
-    <v-snackbar v-model="snackbar.show" :timeout="3000" :color="snackbar.color">
+    <v-snackbar v-model="snackbar.show" :timeout="3000" :color="snackbar.color" role="status">
       {{ snackbar.text }}
     </v-snackbar>
 
@@ -433,6 +446,10 @@ onMounted(() => {
   min-width: 0;
 }
 
+.attention-table-card {
+  min-height: 240px;
+}
+
 .attention-table :deep(thead) {
   position: sticky;
   top: 0;
@@ -446,5 +463,11 @@ onMounted(() => {
 
 .message-preview {
   max-width: 260px;
+}
+
+@media (max-width: 1280px) {
+  .message-preview {
+    max-width: 190px;
+  }
 }
 </style>
