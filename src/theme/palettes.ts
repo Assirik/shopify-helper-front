@@ -9,6 +9,8 @@ const semantic = {
   warning: '#D97706', // en attente / pending
   error: '#DC2626', // échec / annulé
   info: '#2563EB', // info / SMS
+  attention: '#EA580C', // décision humaine requise
+  neutral: '#6B7280', // ignoré / état neutre
 }
 
 export interface PaletteMeta {

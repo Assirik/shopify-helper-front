@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { palettes } from '@/theme/palettes'
 import { toApiFailure } from '@/services/errors'
+import { useAttentionStore } from '@/stores/attention'
 
 const router = useRouter()
 const auth = useAuthStore()
 const themeStore = useThemeStore()
+const attentionStore = useAttentionStore()
 
 // Sidebar repliable (rail = mode icônes seules)
 const rail = ref(false)
@@ -21,13 +23,18 @@ const showNewPassword = ref(false)
 const passwordError = ref('')
 
 // Items de navigation — le compteur "À traiter" sera branché sur l'API plus tard.
-const navItems = [
+const navItems = computed(() => [
   { title: 'Dashboard', icon: 'mdi-view-dashboard-outline', to: { name: 'dashboard' } },
-  { title: 'À traiter', icon: 'mdi-alert-circle-outline', to: { name: 'a-traiter' }, badge: 0 },
+  {
+    title: 'À traiter',
+    icon: 'mdi-alert-circle-outline',
+    to: { name: 'a-traiter' },
+    badge: attentionStore.counts.all,
+  },
   { title: 'Commandes', icon: 'mdi-cart-outline', to: { name: 'commandes' } },
   { title: 'Clients', icon: 'mdi-account-group-outline', to: { name: 'clients' } },
   { title: 'Messages', icon: 'mdi-message-text-outline', to: { name: 'messages' } },
-]
+])
 
 function logout() {
   auth.logout()
