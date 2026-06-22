@@ -23,8 +23,7 @@ const router = createRouter({
         {
           path: 'a-traiter',
           name: 'a-traiter',
-          component: () => import('@/views/PlaceholderView.vue'),
-          props: { title: 'À traiter' },
+          component: () => import('@/views/ATraiterView.vue'),
         },
         {
           path: 'commandes',
