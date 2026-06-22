@@ -30,6 +30,7 @@ const composedCancellationReason = computed(() =>
 const cancellationSubmitting = computed(() =>
   pendingCancellation.value ? store.mutatingIds.includes(pendingCancellation.value.id) : false,
 )
+const bulkLoading = computed(() => selectedIds.value.some(id => store.mutatingIds.includes(id)))
 
 const headers = [
   { title: 'N°', key: 'orderName', sortable: false, width: 105 },
@@ -121,6 +122,45 @@ async function submitCancellation() {
   }
 }
 
+const bulkSummary = (action: string, total: number, eligible: number, result?: { data: { summary: { succeeded: number; failed: number } } }) => {
+  if (!result) return `Aucune commande éligible pour ${action}.`
+  const skipped = total - eligible
+  const parts = [`${result.data.summary.succeeded} réussie(s)`]
+  if (result.data.summary.failed) parts.push(`${result.data.summary.failed} en échec`)
+  if (skipped) parts.push(`${skipped} ignorée(s)`)
+  return parts.join(' · ')
+}
+
+async function bulkConfirmOrders() {
+  const total = selectedIds.value.length
+  const eligible = store.selectedConfirmableIds.length
+  try {
+    const result = await store.bulkConfirm()
+    snackbar.value = {
+      show: true,
+      text: bulkSummary('la confirmation', total, eligible, result),
+      color: result?.data.summary.failed ? 'warning' : 'success',
+    }
+  } catch (cause) {
+    snackbar.value = { show: true, text: actionErrorMessage(cause), color: 'error' }
+  }
+}
+
+async function bulkRemindOrders() {
+  const total = selectedIds.value.length
+  const eligible = store.selectedRemindableIds.length
+  try {
+    const result = await store.bulkRemind()
+    snackbar.value = {
+      show: true,
+      text: bulkSummary('la relance', total, eligible, result),
+      color: result?.data.summary.failed ? 'warning' : 'info',
+    }
+  } catch (cause) {
+    snackbar.value = { show: true, text: actionErrorMessage(cause), color: 'error' }
+  }
+}
+
 const filters: Array<{ key: AttentionFilter; label: string; color?: string }> = [
   { key: 'all', label: 'Tous' },
   { key: 'free_text', label: 'Réponse libre', color: 'attention' },
@@ -180,6 +220,47 @@ onMounted(() => {
         <v-btn variant="text" size="small" @click="store.fetchQueue">Réessayer</v-btn>
       </div>
     </v-alert>
+
+    <v-slide-y-transition>
+      <v-sheet
+        v-if="selectedIds.length"
+        border
+        rounded="lg"
+        class="d-flex align-center flex-wrap ga-3 px-4 py-2 mb-3"
+      >
+        <span class="font-weight-medium">{{ selectedIds.length }} sélectionnée(s)</span>
+        <v-divider vertical class="mx-1" />
+        <v-btn
+          color="success"
+          size="small"
+          prepend-icon="mdi-check-all"
+          :loading="bulkLoading"
+          :disabled="!store.selectedConfirmableIds.length || bulkLoading"
+          @click="bulkConfirmOrders"
+        >
+          Confirmer ({{ store.selectedConfirmableIds.length }})
+        </v-btn>
+        <v-btn
+          color="primary"
+          size="small"
+          prepend-icon="mdi-refresh"
+          :loading="bulkLoading"
+          :disabled="!store.selectedRemindableIds.length || bulkLoading"
+          @click="bulkRemindOrders"
+        >
+          Relancer ({{ store.selectedRemindableIds.length }})
+        </v-btn>
+        <v-spacer />
+        <v-btn
+          icon="mdi-close"
+          size="small"
+          variant="text"
+          aria-label="Tout désélectionner"
+          :disabled="bulkLoading"
+          @click="selectedIds = []"
+        />
+      </v-sheet>
+    </v-slide-y-transition>
 
     <v-sheet v-if="!loading && !errorCode && !items.length" border rounded class="pa-10 text-center">
       <v-icon icon="mdi-check-circle-outline" color="success" size="42" class="mb-3" />
