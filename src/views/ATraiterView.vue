@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAttentionStore, type AttentionFilter } from '@/stores/attention'
 import type { AttentionOrder, AttentionReason } from '@/types/attention'
@@ -9,6 +9,27 @@ const store = useAttentionStore()
 const { items, counts, pagination, activeFilter, loading, errorCode, selectedIds } = storeToRefs(store)
 const snackbar = ref({ show: false, text: '', color: 'neutral' })
 const pendingCancellation = ref<AttentionOrder | null>(null)
+const cancellationReason = ref('')
+const cancellationComment = ref('')
+const cancellationReasons = [
+  'Client a annulé',
+  'Commande en double',
+  'Produit indisponible',
+  'Coordonnées invalides',
+  'Suspicion de commande non fiable',
+  'Autre',
+]
+const cancellationCommentLimit = computed(() =>
+  cancellationReason.value ? 500 - cancellationReason.value.length - 3 : 500,
+)
+const composedCancellationReason = computed(() =>
+  cancellationComment.value.trim()
+    ? `${cancellationReason.value} — ${cancellationComment.value.trim()}`
+    : cancellationReason.value,
+)
+const cancellationSubmitting = computed(() =>
+  pendingCancellation.value ? store.mutatingIds.includes(pendingCancellation.value.id) : false,
+)
 
 const headers = [
   { title: 'N°', key: 'orderName', sortable: false, width: 105 },
@@ -75,6 +96,26 @@ async function remindOrder(order: AttentionOrder) {
   try {
     await store.remind(order.id)
     snackbar.value = { show: true, text: `Relance envoyée pour ${order.orderName}.`, color: 'info' }
+  } catch (cause) {
+    snackbar.value = { show: true, text: actionErrorMessage(cause), color: 'error' }
+  }
+}
+
+function closeCancellationDialog() {
+  if (cancellationSubmitting.value) return
+  pendingCancellation.value = null
+  cancellationReason.value = ''
+  cancellationComment.value = ''
+}
+
+async function submitCancellation() {
+  const order = pendingCancellation.value
+  if (!order || !cancellationReason.value || composedCancellationReason.value.length > 500) return
+
+  try {
+    await store.cancel(order.id, composedCancellationReason.value)
+    closeCancellationDialog()
+    snackbar.value = { show: true, text: `${order.orderName} annulée.`, color: 'error' }
   } catch (cause) {
     snackbar.value = { show: true, text: actionErrorMessage(cause), color: 'error' }
   }
@@ -257,6 +298,52 @@ onMounted(() => {
     <v-snackbar v-model="snackbar.show" :timeout="3000" :color="snackbar.color">
       {{ snackbar.text }}
     </v-snackbar>
+
+    <v-dialog
+      :model-value="Boolean(pendingCancellation)"
+      max-width="560"
+      persistent
+      @update:model-value="value => { if (!value) closeCancellationDialog() }"
+    >
+      <v-card>
+        <v-card-title>Annuler la commande {{ pendingCancellation?.orderName }}</v-card-title>
+        <v-card-text>
+          <p class="text-body-2 text-medium-emphasis mb-3">Choisissez un motif d’annulation.</p>
+          <v-radio-group v-model="cancellationReason" hide-details class="mb-3">
+            <v-radio
+              v-for="reason in cancellationReasons"
+              :key="reason"
+              :label="reason"
+              :value="reason"
+              density="compact"
+            />
+          </v-radio-group>
+          <v-textarea
+            v-model="cancellationComment"
+            label="Commentaire complémentaire (optionnel)"
+            rows="3"
+            auto-grow
+            counter
+            :maxlength="cancellationCommentLimit"
+          />
+          <v-alert type="warning" variant="tonal" density="compact">
+            Cette commande ne sera plus relancée automatiquement.
+          </v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="cancellationSubmitting" @click="closeCancellationDialog">Retour</v-btn>
+          <v-btn
+            color="error"
+            :loading="cancellationSubmitting"
+            :disabled="!cancellationReason || composedCancellationReason.length > 500"
+            @click="submitCancellation"
+          >
+            Confirmer l’annulation
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </section>
 </template>
 
