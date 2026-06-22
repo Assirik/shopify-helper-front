@@ -3,10 +3,12 @@ import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAttentionStore, type AttentionFilter } from '@/stores/attention'
 import type { AttentionOrder, AttentionReason } from '@/types/attention'
+import { toApiFailure } from '@/services/errors'
 
 const store = useAttentionStore()
 const { items, counts, pagination, activeFilter, loading, errorCode, selectedIds } = storeToRefs(store)
-const snackbar = ref({ show: false, text: '' })
+const snackbar = ref({ show: false, text: '', color: 'neutral' })
+const pendingCancellation = ref<AttentionOrder | null>(null)
 
 const headers = [
   { title: 'N°', key: 'orderName', sortable: false, width: 105 },
@@ -45,7 +47,37 @@ const formatDate = (value: string) => {
 }
 
 function showDetail(_event: MouseEvent, row: { item: AttentionOrder }) {
-  snackbar.value = { show: true, text: `Détail ${row.item.orderName} — écran à venir` }
+  snackbar.value = { show: true, text: `Détail ${row.item.orderName} — écran à venir`, color: 'neutral' }
+}
+
+const actionErrorMessage = (cause: unknown) => {
+  const code = toApiFailure(cause).code
+  const messages: Record<string, string> = {
+    OrderConfirmationNotAllowed: 'Cette commande ne peut plus être confirmée.',
+    OrderReminderNotAllowed: 'Cette commande ne peut pas être relancée.',
+    OrderReminderLimitReached: 'La limite de relances est atteinte.',
+    OrderReminderTooSoon: 'Une relance a été envoyée trop récemment.',
+    OrderPhoneRequired: 'Aucun numéro valide n’est disponible.',
+  }
+  return messages[code] || 'L’action n’a pas pu être effectuée.'
+}
+
+async function confirmOrder(order: AttentionOrder) {
+  try {
+    await store.confirm(order.id)
+    snackbar.value = { show: true, text: `${order.orderName} confirmée.`, color: 'success' }
+  } catch (cause) {
+    snackbar.value = { show: true, text: actionErrorMessage(cause), color: 'error' }
+  }
+}
+
+async function remindOrder(order: AttentionOrder) {
+  try {
+    await store.remind(order.id)
+    snackbar.value = { show: true, text: `Relance envoyée pour ${order.orderName}.`, color: 'info' }
+  } catch (cause) {
+    snackbar.value = { show: true, text: actionErrorMessage(cause), color: 'error' }
+  }
 }
 
 const filters: Array<{ key: AttentionFilter; label: string; color?: string }> = [
@@ -176,13 +208,55 @@ onMounted(() => {
           <span class="text-body-2">{{ formatDate(item.receivedAt) }}</span>
         </template>
 
-        <template #item.actions>
-          <span class="text-medium-emphasis">—</span>
+        <template #item.actions="{ item }">
+          <div class="d-flex justify-end ga-1" @click.stop>
+            <v-tooltip v-if="item.capabilities.canConfirm" text="Confirmer" location="top">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-check"
+                  color="success"
+                  variant="text"
+                  size="small"
+                  :loading="store.mutatingIds.includes(item.id)"
+                  @click="confirmOrder(item)"
+                />
+              </template>
+            </v-tooltip>
+            <v-tooltip v-if="item.capabilities.canRemind" text="Relancer" location="top">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-refresh"
+                  color="primary"
+                  variant="text"
+                  size="small"
+                  :disabled="store.mutatingIds.includes(item.id)"
+                  @click="remindOrder(item)"
+                />
+              </template>
+            </v-tooltip>
+            <v-tooltip v-if="item.capabilities.canCancel" text="Annuler" location="top">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-close"
+                  color="error"
+                  variant="text"
+                  size="small"
+                  :disabled="store.mutatingIds.includes(item.id)"
+                  @click="pendingCancellation = item"
+                />
+              </template>
+            </v-tooltip>
+          </div>
         </template>
       </v-data-table-server>
     </v-card>
 
-    <v-snackbar v-model="snackbar.show" :timeout="2500">{{ snackbar.text }}</v-snackbar>
+    <v-snackbar v-model="snackbar.show" :timeout="3000" :color="snackbar.color">
+      {{ snackbar.text }}
+    </v-snackbar>
   </section>
 </template>
 
