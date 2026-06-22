@@ -14,7 +14,7 @@ const router = createRouter({
       path: '/',
       component: () => import('@/layouts/DefaultLayout.vue'),
       children: [
-        { path: '', redirect: { name: 'dashboard' } },
+        { path: '', redirect: { name: 'a-traiter' } },
         {
           path: 'dashboard',
           name: 'dashboard',
@@ -50,13 +50,21 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+export const getSafeRedirect = (value: unknown) => {
+  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
+    ? value
+    : '/a-traiter'
+}
+
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
+  await auth.initialize()
+
   if (!to.meta.public && !auth.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.name === 'login' && auth.isAuthenticated) {
-    return { name: 'dashboard' }
+    return getSafeRedirect(to.query.redirect)
   }
 })
 
