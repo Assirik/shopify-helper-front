@@ -3,9 +3,16 @@ import '@mdi/font/css/materialdesignicons.css'
 
 import { createVuetify } from 'vuetify'
 import { aliases, mdi } from 'vuetify/iconsets/mdi'
+import { fr } from 'vuetify/locale'
 import { DEFAULT_PALETTE, themes } from '@/theme/palettes'
 
 export default createVuetify({
+  // Interface en français (pied de tableau, pagination, états vides, etc.)
+  locale: {
+    locale: 'fr',
+    fallback: 'fr',
+    messages: { fr },
+  },
   theme: {
     defaultTheme: DEFAULT_PALETTE,
     themes,

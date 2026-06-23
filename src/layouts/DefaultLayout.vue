@@ -12,6 +12,20 @@ const auth = useAuthStore()
 const themeStore = useThemeStore()
 const attentionStore = useAttentionStore()
 
+// Bascule clair/sombre : on saute vers la palette claire/sombre par défaut.
+const isDark = computed(() => palettes.find((p) => p.key === themeStore.current)?.dark ?? false)
+function toggleTheme() {
+  const target = palettes.find((p) => p.dark === !isDark.value)
+  if (target) themeStore.setPalette(target.key)
+}
+
+const userInitials = computed(() => {
+  const name = auth.user?.userName ?? ''
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return 'AS'
+  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase()
+})
+
 // Sidebar repliable (rail = mode icônes seules)
 const rail = ref(false)
 const passwordDialog = ref(false)
@@ -86,50 +100,35 @@ async function submitPasswordChange() {
 </script>
 
 <template>
-  <v-navigation-drawer :rail="rail" permanent>
-    <v-list-item
-      :prepend-avatar="undefined"
-      prepend-icon="mdi-storefront-outline"
-      title="Assirik"
-      subtitle="Helpdesk"
-      nav
-    />
-    <v-divider />
-
-    <v-list density="comfortable" nav>
-      <v-list-item
-        v-for="item in navItems"
-        :key="item.title"
-        :to="item.to"
-        :prepend-icon="item.icon"
-        :title="item.title"
-        :aria-label="item.title"
-      >
-        <template v-if="item.badge" #append>
-          <v-badge color="error" :content="item.badge" inline />
-        </template>
-      </v-list-item>
-    </v-list>
-  </v-navigation-drawer>
-
   <v-app-bar flat border>
     <v-app-bar-nav-icon icon="mdi-menu" @click="rail = !rail" />
-    <v-app-bar-title>Assirik Helpdesk</v-app-bar-title>
+    <div class="d-flex align-center ga-2 mr-2">
+      <v-avatar color="primary" rounded="lg" size="30">
+        <v-icon icon="mdi-flash" size="20" />
+      </v-avatar>
+      <span class="text-subtitle-1 font-weight-bold">
+        Assirik <span class="text-medium-emphasis font-weight-medium">Helpdesk</span>
+      </span>
+    </div>
 
     <v-spacer />
 
     <!-- Recherche globale (placeholder, non branchée) -->
-    <v-responsive max-width="320" class="mr-2 d-none d-sm-flex">
+    <v-responsive max-width="550" class="mr-2 d-none d-sm-flex">
       <v-text-field
-        density="compact"
-        variant="solo-filled"
+        density="comfortable"
         flat
         hide-details
-        rounded
+        variant="outlined"
+        bg-color="grey-lighten-3"
+        color="text-secondary"
+        glow
         placeholder="Rechercher (commande, téléphone, client)…"
         prepend-inner-icon="mdi-magnify"
       />
     </v-responsive>
+
+    <v-spacer/>
 
     <!-- Menu rapide : palettes -->
     <v-menu>
@@ -152,10 +151,30 @@ async function submitPasswordChange() {
       </v-list>
     </v-menu>
 
+    <!-- Bascule clair / sombre -->
+    <v-btn
+      :icon="isDark ? 'mdi-weather-sunny' : 'mdi-weather-night'"
+      variant="text"
+      :aria-label="isDark ? 'Passer en thème clair' : 'Passer en thème sombre'"
+      @click="toggleTheme"
+    />
+
     <!-- Menu utilisateur -->
     <v-menu>
       <template #activator="{ props }">
-        <v-btn icon="mdi-account-circle-outline" variant="text" aria-label="Ouvrir le menu utilisateur" v-bind="props" />
+        <v-btn
+          variant="text"
+          rounded="pill"
+          class="text-none px-2"
+          aria-label="Ouvrir le menu utilisateur"
+          v-bind="props"
+        >
+          <v-avatar color="secondary" size="32" class="mr-2">
+            <span class="text-caption font-weight-bold">{{ userInitials }}</span>
+          </v-avatar>
+          <span class="d-none d-sm-inline text-body-2 font-weight-medium">{{ auth.user?.userName ?? 'Mon compte' }}</span>
+          <v-icon icon="mdi-chevron-down" size="18" class="text-medium-emphasis ml-1 d-none d-sm-inline" />
+        </v-btn>
       </template>
       <v-list density="compact">
         <v-list-item
@@ -172,6 +191,28 @@ async function submitPasswordChange() {
       </v-list>
     </v-menu>
   </v-app-bar>
+  <v-navigation-drawer :rail="rail" permanent>
+    <v-list density="comfortable" nav class="mt-2">
+      <v-list-item
+        v-for="item in navItems"
+        :key="item.title"
+        :to="item.to"
+        :prepend-icon="item.icon"
+        :title="item.title"
+        :aria-label="item.title"
+      >
+        <template v-if="item.badge" #append>
+          <v-badge color="error" :content="item.badge" inline />
+        </template>
+      </v-list-item>
+    </v-list>
+
+    <template #append>
+      <div v-if="!rail" class="px-4 py-3 text-caption text-medium-emphasis border-t-thin">
+        Confirmation COD · Sénégal
+      </div>
+    </template>
+  </v-navigation-drawer>
 
   <v-main>
     <v-container fluid class="pa-6">

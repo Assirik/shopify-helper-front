@@ -75,11 +75,16 @@ function showDetail(_event: MouseEvent, row: { item: AttentionOrder }) {
 const actionErrorMessage = (cause: unknown) => {
   const code = toApiFailure(cause).code
   const messages: Record<string, string> = {
+    OrderNotFound: 'Commande introuvable.',
     OrderConfirmationNotAllowed: 'Cette commande ne peut plus être confirmée.',
     OrderReminderNotAllowed: 'Cette commande ne peut pas être relancée.',
     OrderReminderLimitReached: 'La limite de relances est atteinte.',
     OrderReminderTooSoon: 'Une relance a été envoyée trop récemment.',
+    OrderReminderConflict: 'Une relance est déjà en cours, réessayez.',
     OrderPhoneRequired: 'Aucun numéro valide n’est disponible.',
+    OrderCancellationNotAllowed: 'Cette commande est déjà annulée.',
+    OrderCancelReasonRequired: 'Un motif d’annulation est obligatoire.',
+    OrderCancelReasonTooLong: 'Le motif est trop long (500 caractères maximum).',
   }
   return messages[code] || 'L’action n’a pas pu être effectuée.'
 }
@@ -161,7 +166,7 @@ async function bulkRemindOrders() {
   }
 }
 
-const filters: Array<{ key: AttentionFilter; label: string; color?: string }> = [
+const filters: Array<{ key: AttentionFilter; label: string; color?: string, borderColor?: string }> = [
   { key: 'all', label: 'Tous' },
   { key: 'free_text', label: 'Réponse libre', color: 'attention' },
   { key: 'sms_only', label: 'SMS seul', color: 'info' },
@@ -191,24 +196,32 @@ onMounted(() => {
       <v-btn
         prepend-icon="mdi-refresh"
         variant="outlined"
+        border="sm opacity-25"
+        rounded="lg"
         :loading="loading"
+        size="large"  
         @click="store.fetchQueue"
       >
-        Actualiser
+        <span class="text-uppercase">Actualiser</span>
       </v-btn>
     </header>
 
-    <div class="d-flex flex-wrap ga-2 mb-4" aria-label="Filtres de la file à traiter">
+    <div class="d-flex align-center flex-wrap ga-2 mb-4" aria-label="Filtres de la file à traiter">
+      <span class="text-caption font-weight-medium text-medium-emphasis mr-1">Raison :</span>
       <v-chip
         v-for="filter in filters"
         :key="filter.key"
         :color="activeFilter === filter.key ? filter.color || 'primary' : undefined"
-        :variant="activeFilter === filter.key ? 'flat' : 'outlined'"
+        :variant="activeFilter === filter.key ? 'tonal' : 'outlined'"
         filter
+        outlined
         :aria-pressed="activeFilter === filter.key"
         :aria-label="`${filter.label}, ${filterCount(filter.key)} commande(s)`"
         @click="store.setFilter(filter.key)"
+        style="cursor: pointer;"
+        :border="activeFilter === filter.key ? `${filter.color || 'primary'} sm opacity-100` : 'sm opacity-10'"
       >
+      <v-icon v-if="activeFilter !== filter.key" :color="filter.color || 'primary'">mdi-circle-medium</v-icon>
         {{ filter.label }}
         <span class="ml-2 font-weight-bold">{{ filterCount(filter.key) }}</span>
       </v-chip>
@@ -322,8 +335,8 @@ onMounted(() => {
         </template>
 
         <template #item.reason="{ item }">
-          <v-chip :color="reasons[item.reason].color" size="small" variant="tonal">
-            {{ reasons[item.reason].label }}
+          <v-chip :color="reasons[item.reason].color" size="small" variant="tonal" :border="`${reasons[item.reason].color} sm opacity-50`">
+            <strong>{{ reasons[item.reason].label }}x </strong>
           </v-chip>
         </template>
 
@@ -349,7 +362,7 @@ onMounted(() => {
                   icon="mdi-check"
                   color="success"
                   variant="text"
-                  size="small"
+                  size="default"
                   :loading="store.mutatingIds.includes(item.id)"
                   :aria-label="`Confirmer ${item.orderName}`"
                   @click="confirmOrder(item)"
@@ -363,8 +376,8 @@ onMounted(() => {
                   icon="mdi-refresh"
                   color="primary"
                   variant="text"
-                  size="small"
-                  :disabled="store.mutatingIds.includes(item.id)"
+                  size="default"
+                  :loading="store.mutatingIds.includes(item.id)"
                   :aria-label="`Relancer ${item.orderName}`"
                   @click="remindOrder(item)"
                 />
@@ -377,8 +390,8 @@ onMounted(() => {
                   icon="mdi-close"
                   color="error"
                   variant="text"
-                  size="small"
-                  :disabled="store.mutatingIds.includes(item.id)"
+                  size="default"
+                  :loading="store.mutatingIds.includes(item.id)"
                   :aria-label="`Annuler ${item.orderName}`"
                   @click="pendingCancellation = item"
                 />
