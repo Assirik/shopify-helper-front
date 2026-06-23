@@ -54,6 +54,10 @@ function openOrders(customer: CustomerListItem) {
   void router.push({ name: 'commandes', query: { phone: customer.phoneE164 } })
 }
 
+function onRowClick(_event: MouseEvent, row: { item: CustomerListItem }) {
+  openOrders(row.item)
+}
+
 onMounted(() => {
   void store.fetchList()
 })
@@ -153,7 +157,7 @@ onMounted(() => {
         hover
         @update:page="store.setPage"
         @update:items-per-page="store.setLimit"
-        @click:row="(_e: MouseEvent, row: { item: CustomerListItem }) => openOrders(row.item)"
+        @click:row="onRowClick"
       >
         <template #item.fullName="{ item }">
           <div class="d-flex align-center ga-3 py-1">
