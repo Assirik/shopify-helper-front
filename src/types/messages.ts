@@ -2,8 +2,8 @@ import type { Pagination } from '@/types/attention'
 
 export type { Pagination }
 
-/** Réponse brute du provider : forme inconnue selon Meta/Termii. */
-export type ProviderResponse = string | Record<string, unknown> | null | unknown
+/** Réponse brute du provider : forme variable selon Meta/Termii. */
+export type ProviderResponse = string | Record<string, unknown> | null
 
 export interface MessageFallbackRef {
   id: string

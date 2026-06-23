@@ -3,30 +3,14 @@ import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAttentionStore, type AttentionFilter } from '@/stores/attention'
 import type { AttentionOrder, AttentionReason } from '@/types/attention'
-import { toApiFailure } from '@/services/errors'
+import { orderActionErrorMessage } from '@/utils/orderErrors'
+import { bulkSummary } from '@/utils/bulkSummary'
+import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
 
 const store = useAttentionStore()
 const { items, counts, pagination, activeFilter, loading, errorCode, selectedIds } = storeToRefs(store)
 const snackbar = ref({ show: false, text: '', color: 'neutral' })
 const pendingCancellation = ref<AttentionOrder | null>(null)
-const cancellationReason = ref('')
-const cancellationComment = ref('')
-const cancellationReasons = [
-  'Client a annulé',
-  'Commande en double',
-  'Produit indisponible',
-  'Coordonnées invalides',
-  'Suspicion de commande non fiable',
-  'Autre',
-]
-const cancellationCommentLimit = computed(() =>
-  cancellationReason.value ? 500 - cancellationReason.value.length - 3 : 500,
-)
-const composedCancellationReason = computed(() =>
-  cancellationComment.value.trim()
-    ? `${cancellationReason.value} — ${cancellationComment.value.trim()}`
-    : cancellationReason.value,
-)
 const cancellationSubmitting = computed(() =>
   pendingCancellation.value ? store.mutatingIds.includes(pendingCancellation.value.id) : false,
 )
@@ -72,29 +56,12 @@ function showDetail(_event: MouseEvent, row: { item: AttentionOrder }) {
   snackbar.value = { show: true, text: `Détail ${row.item.orderName} — écran à venir`, color: 'neutral' }
 }
 
-const actionErrorMessage = (cause: unknown) => {
-  const code = toApiFailure(cause).code
-  const messages: Record<string, string> = {
-    OrderNotFound: 'Commande introuvable.',
-    OrderConfirmationNotAllowed: 'Cette commande ne peut plus être confirmée.',
-    OrderReminderNotAllowed: 'Cette commande ne peut pas être relancée.',
-    OrderReminderLimitReached: 'La limite de relances est atteinte.',
-    OrderReminderTooSoon: 'Une relance a été envoyée trop récemment.',
-    OrderReminderConflict: 'Une relance est déjà en cours, réessayez.',
-    OrderPhoneRequired: 'Aucun numéro valide n’est disponible.',
-    OrderCancellationNotAllowed: 'Cette commande est déjà annulée.',
-    OrderCancelReasonRequired: 'Un motif d’annulation est obligatoire.',
-    OrderCancelReasonTooLong: 'Le motif est trop long (500 caractères maximum).',
-  }
-  return messages[code] || 'L’action n’a pas pu être effectuée.'
-}
-
 async function confirmOrder(order: AttentionOrder) {
   try {
     await store.confirm(order.id)
     snackbar.value = { show: true, text: `${order.orderName} confirmée.`, color: 'success' }
   } catch (cause) {
-    snackbar.value = { show: true, text: actionErrorMessage(cause), color: 'error' }
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
 }
 
@@ -103,37 +70,20 @@ async function remindOrder(order: AttentionOrder) {
     await store.remind(order.id)
     snackbar.value = { show: true, text: `Relance envoyée pour ${order.orderName}.`, color: 'info' }
   } catch (cause) {
-    snackbar.value = { show: true, text: actionErrorMessage(cause), color: 'error' }
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
 }
 
-function closeCancellationDialog() {
-  if (cancellationSubmitting.value) return
-  pendingCancellation.value = null
-  cancellationReason.value = ''
-  cancellationComment.value = ''
-}
-
-async function submitCancellation() {
+async function submitCancellation(reason: string) {
   const order = pendingCancellation.value
-  if (!order || !cancellationReason.value || composedCancellationReason.value.length > 500) return
-
+  if (!order) return
   try {
-    await store.cancel(order.id, composedCancellationReason.value)
-    closeCancellationDialog()
+    await store.cancel(order.id, reason)
+    pendingCancellation.value = null
     snackbar.value = { show: true, text: `${order.orderName} annulée.`, color: 'error' }
   } catch (cause) {
-    snackbar.value = { show: true, text: actionErrorMessage(cause), color: 'error' }
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
-}
-
-const bulkSummary = (action: string, total: number, eligible: number, result?: { data: { summary: { succeeded: number; failed: number } } }) => {
-  if (!result) return `Aucune commande éligible pour ${action}.`
-  const skipped = total - eligible
-  const parts = [`${result.data.summary.succeeded} réussie(s)`]
-  if (result.data.summary.failed) parts.push(`${result.data.summary.failed} en échec`)
-  if (skipped) parts.push(`${skipped} ignorée(s)`)
-  return parts.join(' · ')
 }
 
 async function bulkConfirmOrders() {
@@ -147,7 +97,7 @@ async function bulkConfirmOrders() {
       color: result?.data.summary.failed ? 'warning' : 'success',
     }
   } catch (cause) {
-    snackbar.value = { show: true, text: actionErrorMessage(cause), color: 'error' }
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
 }
 
@@ -162,7 +112,7 @@ async function bulkRemindOrders() {
       color: result?.data.summary.failed ? 'warning' : 'info',
     }
   } catch (cause) {
-    snackbar.value = { show: true, text: actionErrorMessage(cause), color: 'error' }
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
 }
 
@@ -406,51 +356,13 @@ onMounted(() => {
       {{ snackbar.text }}
     </v-snackbar>
 
-    <v-dialog
+    <CancelOrderDialog
       :model-value="Boolean(pendingCancellation)"
-      max-width="560"
-      persistent
-      @update:model-value="value => { if (!value) closeCancellationDialog() }"
-    >
-      <v-card>
-        <v-card-title>Annuler la commande {{ pendingCancellation?.orderName }}</v-card-title>
-        <v-card-text>
-          <p class="text-body-2 text-medium-emphasis mb-3">Choisissez un motif d’annulation.</p>
-          <v-radio-group v-model="cancellationReason" hide-details class="mb-3">
-            <v-radio
-              v-for="reason in cancellationReasons"
-              :key="reason"
-              :label="reason"
-              :value="reason"
-              density="compact"
-            />
-          </v-radio-group>
-          <v-textarea
-            v-model="cancellationComment"
-            label="Commentaire complémentaire (optionnel)"
-            rows="3"
-            auto-grow
-            counter
-            :maxlength="cancellationCommentLimit"
-          />
-          <v-alert type="warning" variant="tonal" density="compact">
-            Cette commande ne sera plus relancée automatiquement.
-          </v-alert>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" :disabled="cancellationSubmitting" @click="closeCancellationDialog">Retour</v-btn>
-          <v-btn
-            color="error"
-            :loading="cancellationSubmitting"
-            :disabled="!cancellationReason || composedCancellationReason.length > 500"
-            @click="submitCancellation"
-          >
-            Confirmer l’annulation
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+      :order-name="pendingCancellation?.orderName"
+      :submitting="cancellationSubmitting"
+      @update:model-value="(value) => { if (!value) pendingCancellation = null }"
+      @confirm="submitCancellation"
+    />
   </section>
 </template>
 

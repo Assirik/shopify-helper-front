@@ -10,6 +10,7 @@ import {
 } from '@/constants/status'
 import { formatAmount, formatDateTime, formatNullable, formatPhone } from '@/utils/format'
 import { orderActionErrorMessage } from '@/utils/orderErrors'
+import { bulkSummary } from '@/utils/bulkSummary'
 import StatusChip from '@/components/StatusChip.vue'
 import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
 
@@ -122,20 +123,6 @@ async function submitCancellation(reason: string) {
   } catch (cause) {
     snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
-}
-
-const bulkSummary = (
-  action: string,
-  total: number,
-  eligible: number,
-  result?: { data: { summary: { succeeded: number; failed: number } } },
-) => {
-  if (!result) return `Aucune commande éligible pour ${action}.`
-  const skipped = total - eligible
-  const parts = [`${result.data.summary.succeeded} réussie(s)`]
-  if (result.data.summary.failed) parts.push(`${result.data.summary.failed} en échec`)
-  if (skipped) parts.push(`${skipped} ignorée(s)`)
-  return parts.join(' · ')
 }
 
 async function bulkConfirmOrders() {
