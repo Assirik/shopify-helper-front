@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -108,6 +108,16 @@ async function submitPasswordChange() {
       : 'Le mot de passe n’a pas pu être modifié.'
   }
 }
+
+onMounted(() => {
+  // Badge sidebar : charger les compteurs si la file n'est pas déjà chargée.
+  // Sur /a-traiter, ATraiterView a déjà lancé fetchQueue (loading=true) → on saute,
+  // sinon on récupère seulement les compteurs sans tirer une page complète.
+  const countsAreEmpty = Object.values(attentionStore.counts).every(count => count === 0)
+  if (countsAreEmpty && !attentionStore.loading) {
+    void attentionStore.fetchCounts()
+  }
+})
 </script>
 
 <template>

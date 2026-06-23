@@ -68,6 +68,17 @@ export const useAttentionStore = defineStore('attention', () => {
     }
   }
 
+  // Rafraîchit uniquement les compteurs (badge sidebar) sans tirer une page
+  // complète ni écraser items/pagination/selectedIds de la file partagée.
+  async function fetchCounts() {
+    try {
+      const response = await attentionService.list({ reason: undefined, page: 1, limit: 1 })
+      Object.assign(counts, response.counts)
+    } catch {
+      // Badge silencieux : on ne perturbe pas l'écran principal en cas d'échec.
+    }
+  }
+
   async function setFilter(filter: AttentionFilter) {
     activeFilter.value = filter
     pagination.page = 1
@@ -131,6 +142,7 @@ export const useAttentionStore = defineStore('attention', () => {
     selectedConfirmableIds,
     selectedRemindableIds,
     fetchQueue,
+    fetchCounts,
     setFilter,
     setPage,
     setLimit,
