@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAttentionStore, type AttentionFilter } from '@/stores/attention'
 import type { AttentionOrder, AttentionReason } from '@/types/attention'
@@ -8,6 +9,7 @@ import { bulkSummary } from '@/utils/bulkSummary'
 import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
 
 const store = useAttentionStore()
+const router = useRouter()
 const { items, counts, pagination, activeFilter, loading, errorCode, selectedIds } = storeToRefs(store)
 const snackbar = ref({ show: false, text: '', color: 'neutral' })
 const pendingCancellation = ref<AttentionOrder | null>(null)
@@ -53,7 +55,7 @@ const formatDate = (value: string) => {
 }
 
 function showDetail(_event: MouseEvent, row: { item: AttentionOrder }) {
-  snackbar.value = { show: true, text: `Détail ${row.item.orderName} — écran à venir`, color: 'neutral' }
+  void router.push({ name: 'commande-detail', params: { id: row.item.id } })
 }
 
 async function confirmOrder(order: AttentionOrder) {

@@ -40,7 +40,10 @@ function goQueue() {
 }
 
 function goOrders() {
-  void router.push({ name: 'commandes' })
+  void router.push({
+    name: 'commandes',
+    query: { customerConfirmationStatus: 'confirmed' },
+  })
 }
 
 function openOrder(id: string) {

@@ -78,6 +78,7 @@ export const formatProvider = (value: string | undefined | null): string => {
 export const templatePurposeMeta: Record<string, StatusMeta> = {
   order_confirmation_request: { label: 'Demande de confirmation', color: 'info', icon: 'mdi-help-circle-outline' },
   order_confirmed: { label: 'Confirmée', color: 'success', icon: 'mdi-check-circle-outline' },
+  order_cancelled: { label: 'Annulée', color: 'error', icon: 'mdi-close-circle-outline' },
   reminder: { label: 'Relance', color: 'warning', icon: 'mdi-bell-ring-outline' },
   sms_fallback: { label: 'Repli SMS', color: 'neutral', icon: 'mdi-subdirectory-arrow-right' },
 }

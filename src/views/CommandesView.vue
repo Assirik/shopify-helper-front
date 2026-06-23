@@ -156,14 +156,23 @@ async function bulkRemindOrders() {
 }
 
 onMounted(() => {
-  // Pré-remplissage depuis ?phone= (clic depuis l'écran Clients).
+  // Pré-remplissage depuis la navigation Clients ou Dashboard.
   const phone = route.query.phone
+  const status = route.query.customerConfirmationStatus
+  const initialFilters: Partial<typeof filters.value> = {}
+
   if (typeof phone === 'string' && phone) {
     phoneInput.value = phone
-    void store.applyFilters({ phone })
-  } else {
-    void store.fetchList()
+    initialFilters.phone = phone
   }
+  // On n'accepte qu'un statut connu : une query inattendue ne pollue pas le select.
+  if (typeof status === 'string' && status in customerConfirmationStatusMeta) {
+    confirmationStatus.value = status
+    initialFilters.customerConfirmationStatus = status
+  }
+
+  if (Object.keys(initialFilters).length) void store.applyFilters(initialFilters)
+  else void store.fetchList()
 })
 </script>
 
