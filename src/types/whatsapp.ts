@@ -15,8 +15,31 @@ export interface WhatsappTemplate {
   buttons?: WhatsappTemplateButton[]
 }
 
+export interface MetaTemplateButton {
+  type?: string
+  text?: string
+}
+
+export interface MetaTemplateComponent {
+  type?: string
+  text?: string
+  buttons?: MetaTemplateButton[]
+}
+
+export interface MetaTemplate {
+  id?: string
+  name?: string
+  language?: string
+  category?: string
+  status?: string
+  components?: MetaTemplateComponent[]
+}
+
 export interface WhatsappTemplatesResponse {
-  data: WhatsappTemplate[]
+  data: {
+    data?: MetaTemplate[]
+    paging?: unknown
+  }
 }
 
 export interface RegionalVariable {
@@ -33,7 +56,7 @@ export interface MessageVariableConfig {
 }
 
 export interface MessageConfigResponse {
-  data: MessageVariableConfig
+  data: MessageVariableConfig | null
 }
 
 /** Erreur 400 de validation côté backend. */

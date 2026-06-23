@@ -128,7 +128,7 @@ export const useWhatsappConfigStore = defineStore('whatsappConfig', () => {
     loadErrorCode.value = ''
     try {
       const response = await whatsappService.getConfig()
-      applyConfig(response.data)
+      applyConfig(response.data ?? { shippingNote: {}, paymentMethod: {} })
     } catch (cause) {
       loadErrorCode.value = toApiFailure(cause).code
     } finally {
@@ -142,7 +142,7 @@ export const useWhatsappConfigStore = defineStore('whatsappConfig', () => {
     CONFIG_FIELD_KEYS.forEach(key => delete serverErrors[key])
     try {
       const response = await whatsappService.updateConfig(toConfigPayload(fields))
-      applyConfig(response.data)
+      applyConfig(response.data ?? { shippingNote: {}, paymentMethod: {} })
       return true
     } catch (cause) {
       if (isInvalidConfigError(cause)) {
