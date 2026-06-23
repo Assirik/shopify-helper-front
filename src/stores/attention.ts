@@ -1,7 +1,6 @@
 import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { attentionService } from '@/services/attention.service'
-import { mockAttentionService } from '@/services/attention.mock'
 import { toApiFailure } from '@/services/errors'
 import type {
   AttentionCounts,
@@ -12,9 +11,6 @@ import type {
 } from '@/types/attention'
 
 export type AttentionFilter = 'all' | AttentionReason
-
-const useMockAttentionQueue = true
-const attentionDataSource = useMockAttentionQueue ? mockAttentionService : attentionService
 
 const emptyCounts = (): AttentionCounts => ({
   all: 0,
@@ -53,7 +49,7 @@ export const useAttentionStore = defineStore('attention', () => {
     errorCode.value = ''
 
     try {
-      const response = await attentionDataSource.list({
+      const response = await attentionService.list({
         reason: activeFilter.value === 'all' ? undefined : activeFilter.value,
         page: pagination.page,
         limit: pagination.limit,
@@ -102,9 +98,9 @@ export const useAttentionStore = defineStore('attention', () => {
     }
   }
 
-  const confirm = (orderId: string) => runUnitAction(orderId, () => attentionDataSource.confirm(orderId))
-  const remind = (orderId: string) => runUnitAction(orderId, () => attentionDataSource.remind(orderId))
-  const cancel = (orderId: string, reason: string) => runUnitAction(orderId, () => attentionDataSource.cancel(orderId, reason))
+  const confirm = (orderId: string) => runUnitAction(orderId, () => attentionService.confirm(orderId))
+  const remind = (orderId: string) => runUnitAction(orderId, () => attentionService.remind(orderId))
+  const cancel = (orderId: string, reason: string) => runUnitAction(orderId, () => attentionService.cancel(orderId, reason))
 
   async function runBulk(orderIds: string[], action: (ids: string[]) => Promise<BulkOrderResult>) {
     if (!orderIds.length) return undefined
@@ -119,8 +115,8 @@ export const useAttentionStore = defineStore('attention', () => {
     }
   }
 
-  const bulkConfirm = () => runBulk(selectedConfirmableIds.value, attentionDataSource.bulkConfirm)
-  const bulkRemind = () => runBulk(selectedRemindableIds.value, attentionDataSource.bulkRemind)
+  const bulkConfirm = () => runBulk(selectedConfirmableIds.value, attentionService.bulkConfirm)
+  const bulkRemind = () => runBulk(selectedRemindableIds.value, attentionService.bulkRemind)
 
   return {
     items,
