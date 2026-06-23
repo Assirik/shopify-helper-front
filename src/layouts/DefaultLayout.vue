@@ -36,7 +36,7 @@ const showCurrentPassword = ref(false)
 const showNewPassword = ref(false)
 const passwordError = ref('')
 
-// Items de navigation — le compteur "À traiter" sera branché sur l'API plus tard.
+// Items de navigation principaux — le compteur "À traiter" est branché sur le store.
 const navItems = computed(() => [
   { title: 'Dashboard', icon: 'mdi-view-dashboard-outline', to: { name: 'dashboard' } },
   {
@@ -49,6 +49,17 @@ const navItems = computed(() => [
   { title: 'Clients', icon: 'mdi-account-group-outline', to: { name: 'clients' } },
   { title: 'Messages', icon: 'mdi-message-text-outline', to: { name: 'messages' } },
 ])
+
+// Groupe WhatsApp — « Configuration » réservé au rôle ADMIN.
+const whatsappItems = computed(() => {
+  const items = [
+    { title: 'Templates', icon: 'mdi-file-document-outline', to: { name: 'whatsapp-templates' } },
+  ]
+  if (auth.isAdmin) {
+    items.push({ title: 'Configuration', icon: 'mdi-tune', to: { name: 'whatsapp-configuration' } })
+  }
+  return items
+})
 
 function logout() {
   auth.logout()
@@ -205,6 +216,19 @@ async function submitPasswordChange() {
           <v-badge color="error" :content="item.badge" inline />
         </template>
       </v-list-item>
+
+      <v-divider class="my-2" />
+      <v-list-subheader v-if="!rail" class="text-uppercase text-caption font-weight-bold">
+        WhatsApp
+      </v-list-subheader>
+      <v-list-item
+        v-for="item in whatsappItems"
+        :key="item.title"
+        :to="item.to"
+        :prepend-icon="item.icon"
+        :title="item.title"
+        :aria-label="item.title"
+      />
     </v-list>
 
     <template #append>

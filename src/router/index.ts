@@ -28,20 +28,38 @@ const router = createRouter({
         {
           path: 'commandes',
           name: 'commandes',
-          component: () => import('@/views/PlaceholderView.vue'),
-          props: { title: 'Commandes' },
+          component: () => import('@/views/CommandesView.vue'),
+        },
+        {
+          path: 'commandes/:id',
+          name: 'commande-detail',
+          component: () => import('@/views/CommandeDetailView.vue'),
         },
         {
           path: 'clients',
           name: 'clients',
-          component: () => import('@/views/PlaceholderView.vue'),
-          props: { title: 'Clients' },
+          component: () => import('@/views/ClientsView.vue'),
         },
         {
           path: 'messages',
           name: 'messages',
-          component: () => import('@/views/PlaceholderView.vue'),
-          props: { title: 'Messages' },
+          component: () => import('@/views/MessagesView.vue'),
+        },
+        {
+          path: 'messages/:id',
+          name: 'message-detail',
+          component: () => import('@/views/MessageDetailView.vue'),
+        },
+        {
+          path: 'whatsapp/templates',
+          name: 'whatsapp-templates',
+          component: () => import('@/views/WhatsappTemplatesView.vue'),
+        },
+        {
+          path: 'whatsapp/configuration',
+          name: 'whatsapp-configuration',
+          component: () => import('@/views/WhatsappConfigView.vue'),
+          meta: { requiresAdmin: true },
         },
       ],
     },
@@ -64,6 +82,10 @@ router.beforeEach(async (to) => {
   }
   if (to.name === 'login' && auth.isAuthenticated) {
     return getSafeRedirect(to.query.redirect)
+  }
+  // Routes ADMIN-only : un USER est renvoyé vers la file « À traiter ».
+  if (to.meta.requiresAdmin && !auth.isAdmin) {
+    return { name: 'a-traiter' }
   }
 })
 
