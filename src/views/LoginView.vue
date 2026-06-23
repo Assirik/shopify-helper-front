@@ -2,28 +2,43 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { toApiFailure } from '@/services/errors'
 
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
-const email = ref('')
+const identifier = ref('')
 const password = ref('')
 const showPassword = ref(false)
-const loading = ref(false)
 const error = ref('')
+const success = ref(route.query.reason === 'password_changed' ? 'Mot de passe modifié. Connectez-vous à nouveau.' : '')
+
+const required = (value: string) => Boolean(value.trim()) || 'Ce champ est obligatoire.'
+
+const safeRedirect = () => {
+  const value = route.query.redirect
+  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
+    ? value
+    : '/a-traiter'
+}
 
 async function submit() {
   error.value = ''
-  loading.value = true
+  success.value = ''
+  if (!identifier.value.trim() || !password.value) {
+    error.value = 'Renseignez votre identifiant et votre mot de passe.'
+    return
+  }
+
   try {
-    await auth.login(email.value, password.value)
-    const redirect = (route.query.redirect as string) || '/dashboard'
-    router.push(redirect)
-  } catch {
-    error.value = 'Identifiants invalides ou serveur indisponible.'
-  } finally {
-    loading.value = false
+    await auth.login(identifier.value.trim(), password.value)
+    await router.push(safeRedirect())
+  } catch (cause) {
+    const failure = toApiFailure(cause)
+    if (failure.code === 'InvalidCredentials') error.value = 'Nom d’utilisateur, email ou mot de passe incorrect.'
+    else if (failure.code === 'AccountDisabled') error.value = 'Ce compte a été désactivé. Contactez un administrateur.'
+    else error.value = 'Le service est indisponible. Réessayez dans quelques instants.'
   }
 }
 </script>
@@ -42,14 +57,17 @@ async function submit() {
           <v-alert v-if="error" type="error" variant="tonal" density="compact" class="mb-4">
             {{ error }}
           </v-alert>
+          <v-alert v-if="success" type="success" variant="tonal" density="compact" class="mb-4">
+            {{ success }}
+          </v-alert>
 
           <v-form @submit.prevent="submit">
             <v-text-field
-              v-model="email"
-              label="Email"
-              type="email"
-              prepend-inner-icon="mdi-email-outline"
+              v-model="identifier"
+              label="Nom d’utilisateur ou email"
+              prepend-inner-icon="mdi-account-outline"
               autocomplete="username"
+              :rules="[required]"
             />
             <v-text-field
               v-model="password"
@@ -58,6 +76,7 @@ async function submit() {
               prepend-inner-icon="mdi-lock-outline"
               :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
               autocomplete="current-password"
+              :rules="[required]"
               @click:append-inner="showPassword = !showPassword"
             />
             <v-btn
@@ -65,7 +84,8 @@ async function submit() {
               color="primary"
               size="large"
               block
-              :loading="loading"
+              :loading="auth.loading"
+              :disabled="auth.loading"
               class="mt-2"
             >
               Se connecter

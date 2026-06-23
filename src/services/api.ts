@@ -12,6 +12,13 @@ const api = axios.create({
 
 export const TOKEN_KEY = 'assirik.helpdesk.token'
 
+let unauthorizedHandler: (() => void | Promise<void>) | null = null
+let handlingUnauthorized = false
+
+export const setUnauthorizedHandler = (handler: () => void | Promise<void>) => {
+  unauthorizedHandler = handler
+}
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_KEY)
   if (token) {
@@ -23,12 +30,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem(TOKEN_KEY)
-      // Évite une boucle si on est déjà sur /login
-      if (window.location.pathname !== '/login') {
-        window.location.assign('/login')
-      }
+    if (error.response?.status === 401 && unauthorizedHandler && !handlingUnauthorized) {
+      handlingUnauthorized = true
+      Promise.resolve(unauthorizedHandler()).finally(() => {
+        handlingUnauthorized = false
+      })
     }
     return Promise.reject(error)
   },
