@@ -41,30 +41,31 @@ export interface OrderDetail {
   deliveryRegion?: string
   deliveryRegionCode?: string
   shippingRegion?: string
-  shippingAddress?: string
-  deliverySlot?: string
-  mapUrl?: string
+  deliveryAddress?: string
+  deliveryPreferredMoment?: string
+  deliveryLatitude?: number
+  deliveryLongitude?: number
   lineItems?: OrderLineItem[]
   subtotalPrice?: string | number
   shippingPrice?: string | number
-  totalDiscount?: string | number
+  totalDiscounts?: string | number
   totalPrice?: string | number
-  amountToCollect?: string | number
+  totalOutstanding?: string | number
   currency?: string
   isCashOnDelivery?: boolean
-  paymentMethod?: string
+  paymentGatewayNames?: string[]
   tags?: string[]
-  source?: string
-  shopifyAdminUrl?: string
+  sourceName?: string
+  orderStatusUrl?: string
   customerConfirmationStatus: string
   notificationStatus: string
   confirmationSource?: string
   confirmedAt?: string
-  cancelledAt?: string
-  cancellationReason?: string
+  confirmationCancelledAt?: string
+  confirmationCancelReason?: string
   reminderCount?: number
   lastReminderAt?: string
-  lastCustomerMessage?: string
+  lastCustomerMessageText?: string
   lastCustomerMessageAt?: string
   lastCustomerMessageChannel?: string
   createdAt: string

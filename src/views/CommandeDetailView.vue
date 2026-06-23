@@ -37,6 +37,13 @@ const actionLoading = computed(() => (detail.value ? store.mutatingIds.includes(
 
 const lineItems = computed(() => detail.value?.lineItems ?? [])
 const tags = computed(() => detail.value?.tags ?? [])
+const paymentGatewayLabel = computed(() => detail.value?.paymentGatewayNames?.join(', ') || undefined)
+const deliveryMapUrl = computed(() => {
+  const latitude = detail.value?.deliveryLatitude
+  const longitude = detail.value?.deliveryLongitude
+  if (latitude == null || longitude == null) return undefined
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${latitude},${longitude}`)}`
+})
 
 const lineItemHeaders = [
   { title: 'Produit', key: 'product', sortable: false },
@@ -131,9 +138,9 @@ onMounted(() => {
             <span>{{ formatNullable(detail.customerName) }}</span>
             <span>·</span>
             <span>{{ formatDateTime(detail.createdAt) }}</span>
-            <template v-if="detail.shopifyAdminUrl">
+            <template v-if="detail.orderStatusUrl">
               <span>·</span>
-              <a :href="detail.shopifyAdminUrl" target="_blank" rel="noopener" class="text-primary d-inline-flex align-center ga-1">
+              <a :href="detail.orderStatusUrl" target="_blank" rel="noopener" class="text-primary d-inline-flex align-center ga-1">
                 Voir sur Shopify <v-icon icon="mdi-open-in-new" size="14" />
               </a>
             </template>
@@ -204,12 +211,12 @@ onMounted(() => {
                     <span v-if="detail.deliveryRegionCode" class="text-medium-emphasis">({{ detail.deliveryRegionCode }})</span>
                   </dd>
                 </div>
-                <div><dt>Adresse</dt><dd class="text-right">{{ formatNullable(detail.shippingAddress) }}</dd></div>
-                <div><dt>Créneau préféré</dt><dd>{{ formatNullable(detail.deliverySlot) }}</dd></div>
-                <div v-if="detail.mapUrl">
+                <div><dt>Adresse</dt><dd class="text-right">{{ formatNullable(detail.deliveryAddress) }}</dd></div>
+                <div><dt>Créneau préféré</dt><dd>{{ formatNullable(detail.deliveryPreferredMoment) }}</dd></div>
+                <div v-if="deliveryMapUrl">
                   <dt>Carte</dt>
                   <dd>
-                    <a :href="detail.mapUrl" target="_blank" rel="noopener" class="text-primary d-inline-flex align-center ga-1">
+                    <a :href="deliveryMapUrl" target="_blank" rel="noopener" class="text-primary d-inline-flex align-center ga-1">
                       Ouvrir GPS <v-icon icon="mdi-map-outline" size="15" />
                     </a>
                   </dd>
@@ -256,18 +263,18 @@ onMounted(() => {
               <v-card-text>
                 <div class="amount-row"><span>Sous-total</span><span>{{ formatAmount(detail.subtotalPrice, detail.currency) }}</span></div>
                 <div class="amount-row"><span>Livraison</span><span>{{ formatAmount(detail.shippingPrice, detail.currency) }}</span></div>
-                <div class="amount-row"><span>Remise</span><span class="text-success">{{ formatAmount(detail.totalDiscount, detail.currency) }}</span></div>
+                <div class="amount-row"><span>Remise</span><span class="text-success">{{ formatAmount(detail.totalDiscounts, detail.currency) }}</span></div>
                 <v-divider class="my-2" />
                 <div class="amount-row text-subtitle-1 font-weight-bold"><span>Total</span><span>{{ formatAmount(detail.totalPrice, detail.currency) }}</span></div>
                 <v-sheet
-                  v-if="detail.amountToCollect !== undefined && detail.amountToCollect !== null"
+                  v-if="detail.totalOutstanding !== undefined && detail.totalOutstanding !== null"
                   rounded="lg"
                   color="attention"
                   variant="tonal"
                   class="d-flex align-center justify-space-between px-3 py-2 mt-3"
                 >
                   <span class="text-body-2 font-weight-medium">Reste à collecter</span>
-                  <span class="text-subtitle-1 font-weight-bold">{{ formatAmount(detail.amountToCollect, detail.currency) }}</span>
+                  <span class="text-subtitle-1 font-weight-bold">{{ formatAmount(detail.totalOutstanding, detail.currency) }}</span>
                 </v-sheet>
               </v-card-text>
             </v-card>
@@ -279,7 +286,7 @@ onMounted(() => {
               </v-card-title>
               <v-card-text>
                 <div class="font-weight-medium mb-1">
-                  {{ detail.isCashOnDelivery ? 'Paiement à la livraison' : formatNullable(detail.paymentMethod) }}
+                  {{ detail.isCashOnDelivery ? 'Paiement à la livraison' : formatNullable(paymentGatewayLabel) }}
                 </div>
                 <div class="text-caption text-medium-emphasis mb-3">Devise : {{ formatNullable(detail.currency) }}</div>
                 <v-chip v-if="detail.isCashOnDelivery" color="primary" variant="tonal" size="small" prepend-icon="mdi-cash">COD</v-chip>
@@ -296,7 +303,7 @@ onMounted(() => {
               <div v-if="tags.length" class="d-flex flex-wrap ga-2 mb-3">
                 <v-chip v-for="tag in tags" :key="tag" size="small" variant="tonal" color="neutral">{{ tag }}</v-chip>
               </div>
-              <div class="amount-row"><span class="text-medium-emphasis">Source</span><span>{{ formatNullable(detail.source) }}</span></div>
+              <div class="amount-row"><span class="text-medium-emphasis">Source</span><span>{{ formatNullable(detail.sourceName) }}</span></div>
             </v-card-text>
           </v-card>
         </div>
@@ -312,16 +319,20 @@ onMounted(() => {
               <StatusChip :table="customerConfirmationStatusMeta" :value="detail.customerConfirmationStatus" size="default" class="mb-3" />
               <dl class="info-grid">
                 <div><dt>Source</dt><dd>{{ formatNullable(detail.confirmationSource) }}</dd></div>
-                <div><dt>Date décision</dt><dd>{{ formatDateTime(detail.confirmedAt ?? detail.cancelledAt) }}</dd></div>
+                <div><dt>Date décision</dt><dd>{{ formatDateTime(detail.confirmedAt ?? detail.confirmationCancelledAt) }}</dd></div>
                 <div><dt>Relances</dt><dd>{{ formatNullable(detail.reminderCount ?? 0) }}</dd></div>
                 <div><dt>Dernière relance</dt><dd>{{ formatDateTime(detail.lastReminderAt) }}</dd></div>
+                <div v-if="detail.confirmationCancelReason">
+                  <dt>Motif d’annulation</dt>
+                  <dd>{{ detail.confirmationCancelReason }}</dd>
+                </div>
               </dl>
             </v-card-text>
           </v-card>
 
           <!-- Dernier message client -->
           <v-card
-            v-if="detail.lastCustomerMessage"
+            v-if="detail.lastCustomerMessageText"
             border
             flat
             rounded="lg"
@@ -333,7 +344,7 @@ onMounted(() => {
                 <v-icon icon="mdi-forum-outline" size="20" />
                 <span class="text-subtitle-2 font-weight-bold">Dernier message du client</span>
               </div>
-              <p class="text-body-1 font-italic mb-1">« {{ detail.lastCustomerMessage }} »</p>
+              <p class="text-body-1 font-italic mb-1">« {{ detail.lastCustomerMessageText }} »</p>
               <div class="text-caption text-medium-emphasis">{{ formatDateTime(detail.lastCustomerMessageAt) }}</div>
             </v-card-text>
           </v-card>
