@@ -346,9 +346,9 @@ onMounted(() => {
             </v-card-title>
             <v-card-text>
               <div v-if="detailSummary" class="d-flex flex-wrap ga-2 mb-4">
-                <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-whatsapp">{{ detailSummary.whatsapp }} WhatsApp</v-chip>
-                <v-chip size="small" variant="tonal" color="info" prepend-icon="mdi-message-text-outline">{{ detailSummary.sms }} SMS</v-chip>
-                <v-chip size="small" variant="tonal" color="error" prepend-icon="mdi-alert-circle-outline">{{ detailSummary.failed }} échec(s)</v-chip>
+                <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-whatsapp">{{ detailSummary.byChannel.whatsapp ?? 0 }} WhatsApp</v-chip>
+                <v-chip size="small" variant="tonal" color="info" prepend-icon="mdi-message-text-outline">{{ detailSummary.byChannel.sms ?? 0 }} SMS</v-chip>
+                <v-chip size="small" variant="tonal" color="error" prepend-icon="mdi-alert-circle-outline">{{ detailSummary.byStatus.failed ?? 0 }} échec(s)</v-chip>
               </div>
 
               <p v-if="!detailMessages.length" class="text-body-2 text-medium-emphasis mb-0">

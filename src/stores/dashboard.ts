@@ -3,11 +3,12 @@ import { defineStore } from 'pinia'
 import { dashboardService } from '@/services/dashboard.service'
 import { toApiFailure } from '@/services/errors'
 import type { DashboardStats } from '@/types/dashboard'
+import type { AttentionOrder } from '@/types/attention'
 import type { OrderListItem } from '@/types/orders'
 
 export const useDashboardStore = defineStore('dashboard', () => {
   const stats = ref<DashboardStats | null>(null)
-  const attentionPreview = ref<OrderListItem[]>([])
+  const attentionPreview = ref<AttentionOrder[]>([])
   const confirmedPreview = ref<OrderListItem[]>([])
   const loading = ref(false)
   const errorCode = ref('')

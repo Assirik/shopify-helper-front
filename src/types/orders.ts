@@ -83,11 +83,16 @@ export interface OrderMessage {
   createdAt: string
 }
 
+/**
+ * Résumé des messages d'une commande. Forme imbriquée renvoyée par le backend
+ * (`buildMessageSummary`, contrat §1.2). Les compteurs utiles se lisent via
+ * `byChannel.whatsapp`, `byChannel.sms`, `byStatus.failed`, `byStatus.sent`.
+ */
 export interface OrderMessageSummary {
-  whatsapp: number
-  sms: number
-  failed: number
-  sent: number
+  total: number
+  byStatus: Record<string, number>
+  byChannel: Record<string, number>
+  byProvider: Record<string, number>
 }
 
 export interface OrderListResponse {

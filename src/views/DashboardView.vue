@@ -43,8 +43,8 @@ function goOrders() {
   void router.push({ name: 'commandes' })
 }
 
-function openOrder(order: OrderListItem) {
-  void router.push({ name: 'commande-detail', params: { id: order.id } })
+function openOrder(id: string) {
+  void router.push({ name: 'commande-detail', params: { id } })
 }
 
 function regionLabel(order: OrderListItem) {
@@ -234,11 +234,11 @@ onMounted(() => {
               v-for="order in attentionPreview"
               :key="order.id"
               :title="formatNullable(order.customerName)"
-              :subtitle="formatNullable(order.customerPhoneE164)"
-              @click="openOrder(order)"
+              :subtitle="formatNullable(order.customerPhone)"
+              @click="openOrder(order.id)"
             >
               <template #prepend>
-                <span class="font-weight-bold text-primary mr-2">{{ order.shopifyOrderName }}</span>
+                <span class="font-weight-bold text-primary mr-2">{{ order.orderName }}</span>
               </template>
               <template #append>
                 <StatusChip :table="customerConfirmationStatusMeta" :value="order.customerConfirmationStatus" :show-icon="false" />
@@ -266,7 +266,7 @@ onMounted(() => {
               v-for="order in confirmedPreview"
               :key="order.id"
               :title="formatNullable(order.customerName)"
-              @click="openOrder(order)"
+              @click="openOrder(order.id)"
             >
               <template #prepend>
                 <span class="font-weight-bold text-primary mr-2">{{ order.shopifyOrderName }}</span>
