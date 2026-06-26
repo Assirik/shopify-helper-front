@@ -21,7 +21,7 @@ setUnauthorizedHandler(async () => {
   if (auth.initialized && currentRoute.name !== 'login') {
     await router.replace({
       name: 'login',
-      query: { redirect: currentRoute.fullPath },
+      query: { redirect: currentRoute.fullPath, reason: 'session_expired' },
     })
   }
 })
