@@ -1,5 +1,6 @@
 import api from '@/services/api'
-import type { CurrentUserResponse, LoginResponse } from '@/types/auth'
+import type { AuthApiUser, CurrentUserResponse, LoginResponse } from '@/types/auth'
+import type { BootstrapPayload } from '@/types/users'
 
 export const authService = {
   async login(identifier: string, password: string) {
@@ -16,6 +17,13 @@ export const authService = {
     const { data } = await api.put<{ message: string }>('/auth/me/password', {
       currentPassword,
       newPassword,
+    })
+    return data
+  },
+
+  async bootstrap(payload: BootstrapPayload, secret: string) {
+    const { data } = await api.post<{ data: AuthApiUser }>('/auth/bootstrap', payload, {
+      headers: { 'X-Bootstrap-Secret': secret },
     })
     return data
   },

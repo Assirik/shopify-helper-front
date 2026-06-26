@@ -8,6 +8,9 @@ export interface AuthApiUser {
   phone?: string
   role: UserRole
   isActive: boolean
+  disabledAt?: string | null
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface AuthUser {
@@ -17,6 +20,9 @@ export interface AuthUser {
   phone?: string
   role: UserRole
   isActive: boolean
+  disabledAt?: string | null
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface LoginResponse {
@@ -37,4 +43,7 @@ export const normalizeAuthUser = (user: AuthApiUser): AuthUser => ({
   phone: user.phone,
   role: user.role,
   isActive: user.isActive !== false,
+  disabledAt: user.disabledAt ?? null,
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
 })

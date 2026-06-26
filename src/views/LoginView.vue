@@ -14,8 +14,13 @@ const themeStore = useThemeStore()
 const identifier = ref('')
 const password = ref('')
 const showPassword = ref(false)
-const error = ref('')
-const success = ref(route.query.reason === 'password_changed' ? 'Mot de passe modifié. Connectez-vous à nouveau.' : '')
+const successReasons: Record<string, string> = {
+  password_changed: 'Mot de passe modifié. Connectez-vous à nouveau.',
+  bootstrap_completed: 'Compte administrateur créé. Connectez-vous pour commencer.',
+}
+const reason = typeof route.query.reason === 'string' ? route.query.reason : ''
+const success = ref(successReasons[reason] ?? '')
+const error = ref(reason === 'session_expired' ? 'Votre session a expiré, veuillez vous reconnecter.' : '')
 
 const required = (value: string) => Boolean(value.trim()) || 'Ce champ est obligatoire.'
 
@@ -47,7 +52,7 @@ async function submit() {
   } catch (cause) {
     const failure = toApiFailure(cause)
     if (failure.code === 'InvalidCredentials') error.value = 'Nom d’utilisateur, email ou mot de passe incorrect.'
-    else if (failure.code === 'AccountDisabled') error.value = 'Ce compte a été désactivé. Contactez un administrateur.'
+    else if (failure.code === 'AccountDisabled') error.value = 'Votre compte a été désactivé. Contactez un administrateur.'
     else error.value = 'Le service est indisponible. Réessayez dans quelques instants.'
   }
 }

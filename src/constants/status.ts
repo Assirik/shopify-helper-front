@@ -83,6 +83,23 @@ export const templatePurposeMeta: Record<string, StatusMeta> = {
   sms_fallback: { label: 'Repli SMS', color: 'neutral', icon: 'mdi-subdirectory-arrow-right' },
 }
 
+/** Rôle d'un utilisateur du helpdesk. */
+export const roleMeta: Record<string, StatusMeta> = {
+  ADMIN: { label: 'Administrateur', color: 'primary', icon: 'mdi-shield-account-outline' },
+  USER: { label: 'Agent', color: 'neutral', icon: 'mdi-account-outline' },
+  DEVELOPER: { label: 'Développeur', color: 'info', icon: 'mdi-code-tags' },
+}
+
+/** Statut d'un compte utilisateur (`isActive`). */
+export const accountStatusMeta: Record<string, StatusMeta> = {
+  active: { label: 'Actif', color: 'success', icon: 'mdi-check-circle-outline' },
+  disabled: { label: 'Désactivé', color: 'error', icon: 'mdi-close-circle-outline' },
+}
+
+/** Clé de statut compte à partir du booléen `isActive`. */
+export const accountStatusKey = (isActive: boolean): 'active' | 'disabled' =>
+  isActive ? 'active' : 'disabled'
+
 /** Statut d'un template Meta dans le catalogue WhatsApp. */
 export const templateStatusMeta: Record<string, StatusMeta> = {
   APPROVED: { label: 'Approuvé', color: 'success', icon: 'mdi-check-decagram' },

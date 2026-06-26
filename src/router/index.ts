@@ -11,6 +11,12 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      path: '/premiere-configuration',
+      name: 'bootstrap',
+      component: () => import('@/views/PremiereConfigurationView.vue'),
+      meta: { public: true },
+    },
+    {
       path: '/',
       component: () => import('@/layouts/DefaultLayout.vue'),
       children: [
@@ -61,9 +67,29 @@ const router = createRouter({
           component: () => import('@/views/WhatsappConfigView.vue'),
           meta: { requiresAdmin: true },
         },
+        {
+          path: 'utilisateurs',
+          name: 'utilisateurs',
+          component: () => import('@/views/UtilisateursView.vue'),
+          meta: { requiresAdmin: true },
+        },
+        {
+          path: 'mon-profil',
+          name: 'mon-profil',
+          component: () => import('@/views/MonProfilView.vue'),
+        },
+        {
+          path: '403',
+          name: 'forbidden',
+          component: () => import('@/views/ForbiddenView.vue'),
+        },
+        {
+          path: ':pathMatch(.*)*',
+          name: 'not-found',
+          component: () => import('@/views/NotFoundView.vue'),
+        },
       ],
     },
-    { path: '/:pathMatch(.*)*', redirect: { name: 'dashboard' } },
   ],
 })
 
@@ -83,9 +109,9 @@ router.beforeEach(async (to) => {
   if (to.name === 'login' && auth.isAuthenticated) {
     return getSafeRedirect(to.query.redirect)
   }
-  // Routes ADMIN-only : un USER est renvoyé vers la file « À traiter ».
+  // Routes ADMIN-only : on affiche une page 403 explicite (pas de redirection silencieuse).
   if (to.meta.requiresAdmin && !auth.isAdmin) {
-    return { name: 'a-traiter' }
+    return { name: 'forbidden' }
   }
 })
 
