@@ -47,6 +47,23 @@ const router = createRouter({
           component: () => import('@/views/ClientsView.vue'),
         },
         {
+          path: 'rapprochement',
+          name: 'rapprochement',
+          component: () => import('@/views/RapprochementView.vue'),
+        },
+        {
+          path: 'livreurs',
+          name: 'livreurs',
+          component: () => import('@/views/LivreursView.vue'),
+          meta: { requiresAdmin: true },
+        },
+        {
+          path: 'livraison/configuration',
+          name: 'livraison-configuration',
+          component: () => import('@/views/ConfigurationLivraisonView.vue'),
+          meta: { requiresAdmin: true },
+        },
+        {
           path: 'messages',
           name: 'messages',
           component: () => import('@/views/MessagesView.vue'),
