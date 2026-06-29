@@ -3,12 +3,21 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useOrdersStore } from '@/stores/orders'
-import { orderActionCapabilities, type OrderMessage } from '@/types/orders'
+import {
+  orderActionCapabilities,
+  type DeliverOrderPayload,
+  type DispatchOrderPayload,
+  type OrderMessage,
+} from '@/types/orders'
 import {
   channelMeta,
+  codPaymentStatusMeta,
   customerConfirmationStatusMeta,
+  deliveryChannelMeta,
   lookupMeta,
   messageStatusMeta,
+  operationalStatusMeta,
+  orderEventTypeMeta,
   templatePurposeMeta,
   formatProvider,
 } from '@/constants/status'
@@ -17,23 +26,47 @@ import { orderActionErrorMessage, messageRetryErrorMessage } from '@/utils/order
 import { messagesService } from '@/services/messages.service'
 import StatusChip from '@/components/StatusChip.vue'
 import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
+import DispatchOrderDialog from '@/components/DispatchOrderDialog.vue'
+import DeliverOrderDialog from '@/components/DeliverOrderDialog.vue'
+import OrderReasonDialog from '@/components/OrderReasonDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const store = useOrdersStore()
-const { detail, detailMessages, detailSummary, detailLoading, detailErrorCode } = storeToRefs(store)
+const { detail, detailMessages, detailSummary, detailEvents, detailCapabilities, detailLoading, detailErrorCode } =
+  storeToRefs(store)
 
 const orderId = computed(() => String(route.params.id))
 const snackbar = ref({ show: false, text: '', color: 'neutral' })
 const cancelOpen = ref(false)
+const dispatchOpen = ref(false)
+const deliverOpen = ref(false)
+const failureOpen = ref(false)
+const returnOpen = ref(false)
 const retryingIds = ref<string[]>([])
 
-const capabilities = computed(() =>
-  detail.value
-    ? orderActionCapabilities(detail.value.customerConfirmationStatus)
-    : { canConfirm: false, canRemind: false, canCancel: false },
-)
+// Capabilities : l'API fait foi ; repli local tant que la réponse ne les porte pas.
+const capabilities = computed(() => {
+  if (detailCapabilities.value) return detailCapabilities.value
+  if (detail.value) {
+    return orderActionCapabilities(detail.value.customerConfirmationStatus, detail.value.operationalStatus)
+  }
+  return {
+    canConfirm: false,
+    canRemind: false,
+    canCancel: false,
+    canDispatch: false,
+    canDeliver: false,
+    canMarkFailed: false,
+    canReturn: false,
+  }
+})
 const actionLoading = computed(() => (detail.value ? store.mutatingIds.includes(detail.value.id) : false))
+
+const hasOperationalStatus = computed(() => Boolean(detail.value?.operationalStatus))
+const hasCodInfo = computed(
+  () => detail.value?.codCollectedAmount != null || detail.value?.codExpectedAmount != null,
+)
 
 const lineItems = computed(() => detail.value?.lineItems ?? [])
 const tags = computed(() => detail.value?.tags ?? [])
@@ -86,6 +119,50 @@ async function submitCancellation(reason: string) {
   }
 }
 
+async function submitDispatch(payload: DispatchOrderPayload) {
+  if (!detail.value) return
+  try {
+    await store.dispatch(detail.value.id, payload)
+    dispatchOpen.value = false
+    snackbar.value = { show: true, text: 'Commande expédiée.', color: 'info' }
+  } catch (cause) {
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
+async function submitDelivery(payload: DeliverOrderPayload) {
+  if (!detail.value) return
+  try {
+    await store.deliver(detail.value.id, payload)
+    deliverOpen.value = false
+    snackbar.value = { show: true, text: 'Commande marquée livrée.', color: 'success' }
+  } catch (cause) {
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
+async function submitFailure(reason: string) {
+  if (!detail.value) return
+  try {
+    await store.markDeliveryFailed(detail.value.id, reason)
+    failureOpen.value = false
+    snackbar.value = { show: true, text: 'Échec de livraison enregistré.', color: 'warning' }
+  } catch (cause) {
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
+async function submitReturn(reason: string) {
+  if (!detail.value) return
+  try {
+    await store.markReturned(detail.value.id, reason)
+    returnOpen.value = false
+    snackbar.value = { show: true, text: 'Commande passée en retour.', color: 'neutral' }
+  } catch (cause) {
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
 async function retryMessage(message: OrderMessage) {
   retryingIds.value = [...retryingIds.value, message.id]
   try {
@@ -132,6 +209,12 @@ onMounted(() => {
           <div class="d-flex align-center ga-3 flex-wrap mb-1">
             <h1 class="text-h5 font-weight-bold">{{ detail.shopifyOrderName }}</h1>
             <StatusChip :table="customerConfirmationStatusMeta" :value="detail.customerConfirmationStatus" size="default" />
+            <StatusChip
+              v-if="hasOperationalStatus"
+              :table="operationalStatusMeta"
+              :value="detail.operationalStatus"
+              size="default"
+            />
             <v-chip v-if="detail.isCashOnDelivery" size="small" color="primary" variant="outlined">COD</v-chip>
           </div>
           <div class="d-flex align-center ga-2 text-body-2 text-medium-emphasis flex-wrap">
@@ -146,7 +229,47 @@ onMounted(() => {
             </template>
           </div>
         </div>
-        <div class="d-flex align-center ga-2">
+        <div class="d-flex align-center ga-2 flex-wrap justify-end">
+          <v-btn
+            v-if="capabilities.canMarkFailed"
+            variant="outlined"
+            color="error"
+            border="sm opacity-25"
+            prepend-icon="mdi-alert-circle-outline"
+            :loading="actionLoading"
+            @click="failureOpen = true"
+          >
+            Échec
+          </v-btn>
+          <v-btn
+            v-if="capabilities.canReturn"
+            variant="outlined"
+            color="neutral"
+            border="sm opacity-25"
+            prepend-icon="mdi-keyboard-return"
+            :loading="actionLoading"
+            @click="returnOpen = true"
+          >
+            Retour
+          </v-btn>
+          <v-btn
+            v-if="capabilities.canDispatch"
+            color="info"
+            prepend-icon="mdi-truck-fast-outline"
+            :loading="actionLoading"
+            @click="dispatchOpen = true"
+          >
+            Expédier
+          </v-btn>
+          <v-btn
+            v-if="capabilities.canDeliver"
+            color="success"
+            prepend-icon="mdi-check-circle-outline"
+            :loading="actionLoading"
+            @click="deliverOpen = true"
+          >
+            Marquer livrée
+          </v-btn>
           <v-btn
             v-if="capabilities.canRemind"
             variant="outlined"
@@ -330,6 +453,90 @@ onMounted(() => {
             </v-card-text>
           </v-card>
 
+          <!-- Statut opérationnel -->
+          <v-card v-if="hasOperationalStatus" border flat rounded="lg">
+            <v-card-title class="d-flex align-center ga-2 text-subtitle-1 font-weight-bold">
+              <v-icon icon="mdi-truck-fast-outline" color="primary" size="20" /> Statut opérationnel
+            </v-card-title>
+            <v-card-text>
+              <div class="d-flex align-center ga-2 flex-wrap mb-3">
+                <StatusChip :table="operationalStatusMeta" :value="detail.operationalStatus" size="default" />
+                <StatusChip
+                  v-if="detail.deliveryChannel"
+                  :table="deliveryChannelMeta"
+                  :value="detail.deliveryChannel"
+                />
+              </div>
+              <dl class="info-grid">
+                <div v-if="detail.deliveryChannel === 'internal'">
+                  <dt>Livreur assigné</dt>
+                  <dd>{{ formatNullable(detail.assignedCourier?.name) }}</dd>
+                </div>
+                <div v-if="detail.deliveryChannel === 'carrier'">
+                  <dt>N° de suivi</dt>
+                  <dd>{{ formatNullable(detail.carrierTrackingNumber) }}</dd>
+                </div>
+                <div><dt>Expédiée le</dt><dd>{{ formatDateTime(detail.dispatchedAt) }}</dd></div>
+                <div><dt>Livrée le</dt><dd>{{ formatDateTime(detail.deliveredAt) }}</dd></div>
+                <div><dt>Tentatives</dt><dd>{{ formatNullable(detail.deliveryAttempts ?? 0) }}</dd></div>
+                <div v-if="detail.deliveryFailureReason">
+                  <dt>Motif d’échec</dt>
+                  <dd>{{ detail.deliveryFailureReason }}</dd>
+                </div>
+              </dl>
+            </v-card-text>
+          </v-card>
+
+          <!-- Encaissement COD -->
+          <v-card v-if="hasCodInfo" border flat rounded="lg">
+            <v-card-title class="d-flex align-center ga-2 text-subtitle-1 font-weight-bold">
+              <v-icon icon="mdi-cash-register" color="primary" size="20" /> Encaissement COD
+            </v-card-title>
+            <v-card-text>
+              <div class="amount-row"><span class="text-medium-emphasis">Attendu</span><span>{{ formatAmount(detail.codExpectedAmount, detail.currency) }}</span></div>
+              <div class="amount-row"><span class="text-medium-emphasis">Encaissé</span><span>{{ formatAmount(detail.codCollectedAmount, detail.currency) }}</span></div>
+              <div class="amount-row"><span class="text-medium-emphasis">Rémunération livreur</span><span class="text-error">− {{ formatAmount(detail.courierFeeAmount, detail.currency) }}</span></div>
+              <v-divider class="my-2" />
+              <div class="amount-row text-subtitle-1 font-weight-bold"><span>Net reversé</span><span>{{ formatAmount(detail.codNetRemitted, detail.currency) }}</span></div>
+              <div class="d-flex align-center justify-space-between mt-3">
+                <span class="text-body-2 text-medium-emphasis">Statut paiement</span>
+                <StatusChip :table="codPaymentStatusMeta" :value="detail.codPaymentStatus" />
+              </div>
+              <div v-if="detail.collectedAt" class="text-caption text-medium-emphasis mt-2">
+                Encaissé le {{ formatDateTime(detail.collectedAt) }}
+              </div>
+            </v-card-text>
+          </v-card>
+
+          <!-- Timeline opérationnelle -->
+          <v-card v-if="detailEvents.length" border flat rounded="lg">
+            <v-card-title class="d-flex align-center ga-2 text-subtitle-1 font-weight-bold">
+              <v-icon icon="mdi-timeline-text-outline" color="primary" size="20" /> Historique
+              <span class="text-caption text-medium-emphasis font-weight-regular">· {{ detailEvents.length }}</span>
+            </v-card-title>
+            <v-card-text>
+              <v-timeline side="end" align="start" density="compact" truncate-line="both">
+                <v-timeline-item
+                  v-for="event in detailEvents"
+                  :key="event.id"
+                  :dot-color="lookupMeta(orderEventTypeMeta, event.type).color"
+                  :icon="lookupMeta(orderEventTypeMeta, event.type).icon"
+                  size="small"
+                >
+                  <div class="d-flex align-center ga-2 flex-wrap">
+                    <span class="text-body-2 font-weight-medium">{{ lookupMeta(orderEventTypeMeta, event.type).label }}</span>
+                    <v-spacer />
+                    <span class="text-caption text-medium-emphasis">{{ formatDateTime(event.createdAt) }}</span>
+                  </div>
+                  <div v-if="event.actorName" class="text-caption text-medium-emphasis">
+                    par {{ event.actorName }}
+                  </div>
+                  <div v-if="event.note" class="text-body-2 font-italic mt-1">« {{ event.note }} »</div>
+                </v-timeline-item>
+              </v-timeline>
+            </v-card-text>
+          </v-card>
+
           <!-- Dernier message client -->
           <v-card
             v-if="detail.lastCustomerMessageText"
@@ -439,6 +646,50 @@ onMounted(() => {
       :order-name="detail?.shopifyOrderName"
       :submitting="actionLoading"
       @confirm="submitCancellation"
+    />
+
+    <DispatchOrderDialog
+      v-model="dispatchOpen"
+      :order-name="detail?.shopifyOrderName"
+      :submitting="actionLoading"
+      @confirm="submitDispatch"
+    />
+
+    <DeliverOrderDialog
+      v-model="deliverOpen"
+      :order-name="detail?.shopifyOrderName"
+      :order-total="detail?.totalPrice"
+      :region-code="detail?.deliveryRegionCode"
+      :channel="detail?.deliveryChannel"
+      :currency="detail?.currency"
+      :submitting="actionLoading"
+      @confirm="submitDelivery"
+    />
+
+    <OrderReasonDialog
+      v-model="failureOpen"
+      title="Échec de livraison —"
+      :order-name="detail?.shopifyOrderName"
+      label="Motif de l’échec"
+      icon="mdi-alert-circle-outline"
+      color="error"
+      confirm-text="Enregistrer l’échec"
+      :reasons="['Client injoignable', 'Adresse introuvable', 'Client absent', 'Refus à la livraison', 'Autre']"
+      :submitting="actionLoading"
+      @confirm="submitFailure"
+    />
+
+    <OrderReasonDialog
+      v-model="returnOpen"
+      title="Retour de la commande —"
+      :order-name="detail?.shopifyOrderName"
+      label="Motif du retour"
+      icon="mdi-keyboard-return"
+      color="neutral"
+      confirm-text="Confirmer le retour"
+      :reasons="['Client a annulé', 'Produit refusé', 'Non livrable', 'Autre']"
+      :submitting="actionLoading"
+      @confirm="submitReturn"
     />
   </section>
 </template>
