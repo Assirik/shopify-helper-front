@@ -72,6 +72,12 @@ export const useDeliveryFeesStore = defineStore('deliveryFees', () => {
     }
   }
 
+  /** Charge le barème une seule fois (pour pré-remplir le dialog de livraison). */
+  async function ensureLoaded() {
+    if (config.value || loading.value) return
+    await fetchConfig()
+  }
+
   async function save() {
     if (!dirty.value) return false
     saving.value = true
@@ -92,6 +98,7 @@ export const useDeliveryFeesStore = defineStore('deliveryFees', () => {
     loadErrorCode,
     dirty,
     fetchConfig,
+    ensureLoaded,
     setRegionFee,
     discardChanges,
     save,

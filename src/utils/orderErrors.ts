@@ -11,6 +11,16 @@ const ORDER_ACTION_MESSAGES: Record<string, string> = {
   OrderCancellationNotAllowed: 'Cette commande est déjà annulée.',
   OrderCancelReasonRequired: 'Un motif d’annulation est obligatoire.',
   OrderCancelReasonTooLong: 'Le motif est trop long (500 caractères maximum).',
+  OrderDispatchNotAllowed: 'Cette commande ne peut pas être expédiée dans son état actuel.',
+  OrderDeliverNotAllowed: 'Cette commande ne peut pas être marquée livrée dans son état actuel.',
+  OrderDeliveryFailureNotAllowed: 'Un échec de livraison ne peut pas être enregistré ici.',
+  OrderReturnNotAllowed: 'Cette commande ne peut pas être passée en retour.',
+  CourierRequired: 'Un livreur est requis pour une livraison interne.',
+  CourierNotFound: 'Livreur introuvable.',
+  CourierInactive: 'Ce livreur est désactivé.',
+  InvalidDeliveryChannel: 'Canal de livraison invalide.',
+  InvalidCollectedAmount: 'Le montant encaissé est invalide.',
+  InvalidCourierFee: 'La rémunération livreur est invalide.',
 }
 
 /** Message FR lisible pour une erreur d'action commande (confirm/remind/cancel). */
