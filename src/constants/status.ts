@@ -83,6 +83,40 @@ export const templatePurposeMeta: Record<string, StatusMeta> = {
   sms_fallback: { label: 'Repli SMS', color: 'neutral', icon: 'mdi-subdirectory-arrow-right' },
 }
 
+/** Statut opérationnel de la commande (`operationalStatus`). */
+export const operationalStatusMeta: Record<string, StatusMeta> = {
+  to_deliver: { label: 'À Livrer', color: 'warning', icon: 'mdi-package-variant-closed' },
+  in_delivery: { label: 'Livraison en cours', color: 'info', icon: 'mdi-truck-fast-outline' },
+  delivered: { label: 'Livré', color: 'success', icon: 'mdi-check-circle-outline' },
+  delivery_failed: { label: 'Échec', color: 'error', icon: 'mdi-alert-circle-outline' },
+  returned: { label: 'Retour', color: 'neutral', icon: 'mdi-keyboard-return' },
+}
+
+/** Statut d'encaissement COD (`codPaymentStatus`). */
+export const codPaymentStatusMeta: Record<string, StatusMeta> = {
+  paid: { label: 'Encaissé', color: 'success', icon: 'mdi-cash-check' },
+  partial: { label: 'Partiel', color: 'warning', icon: 'mdi-cash-clock' },
+  unpaid: { label: 'Non encaissé', color: 'error', icon: 'mdi-cash-remove' },
+}
+
+/** Canal de livraison (`deliveryChannel`). */
+export const deliveryChannelMeta: Record<string, StatusMeta> = {
+  internal: { label: 'Livreur interne', color: 'primary', icon: 'mdi-moped-outline' },
+  carrier: { label: 'Transporteur', color: 'info', icon: 'mdi-truck-delivery-outline' },
+}
+
+/** Type d'événement de la timeline opérationnelle (`OrderEvent.type`). */
+export const orderEventTypeMeta: Record<string, StatusMeta> = {
+  confirmed: { label: 'Commande confirmée', color: 'success', icon: 'mdi-check-circle-outline' },
+  cancelled: { label: 'Commande annulée', color: 'error', icon: 'mdi-close-circle-outline' },
+  reminded: { label: 'Relance envoyée', color: 'warning', icon: 'mdi-bell-ring-outline' },
+  dispatched: { label: 'Expédiée', color: 'info', icon: 'mdi-truck-fast-outline' },
+  delivered: { label: 'Livrée', color: 'success', icon: 'mdi-check-circle-outline' },
+  delivery_failed: { label: 'Échec de livraison', color: 'error', icon: 'mdi-alert-circle-outline' },
+  returned: { label: 'Retour', color: 'neutral', icon: 'mdi-keyboard-return' },
+  payment_recorded: { label: 'Encaissement enregistré', color: 'primary', icon: 'mdi-cash-register' },
+}
+
 /** Rôle d'un utilisateur du helpdesk. */
 export const roleMeta: Record<string, StatusMeta> = {
   ADMIN: { label: 'Administrateur', color: 'primary', icon: 'mdi-shield-account-outline' },
