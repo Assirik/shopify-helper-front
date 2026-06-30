@@ -16,28 +16,28 @@ export type DeliveryChannel = 'internal' | 'carrier'
 /** Statut d'encaissement COD. */
 export type CodPaymentStatus = 'paid' | 'partial' | 'unpaid'
 
-/** Référence légère vers un livreur interne assigné à une commande. */
-export interface AssignedCourier {
-  id: string
-  name: string
-}
-
 /**
  * Champs opérationnels partagés par la liste et le détail. Tous optionnels :
  * une commande non encore confirmée n'a pas encore d'`operationalStatus`.
+ *
+ * ⚠️ L'API renvoie `assignedCourierId`/`assignedCarrierId` (id seul, sérialisé
+ * par Mongoose) ; les noms se résolvent via les stores `couriers`/`carriers`.
  */
 export interface OrderOperationalFields {
   operationalStatus?: OrderOperationalStatus
   deliveryChannel?: DeliveryChannel
-  assignedCourier?: AssignedCourier
+  assignedCourierId?: string
+  assignedCarrierId?: string
   carrierTrackingNumber?: string
   dispatchedAt?: string
   deliveredAt?: string
   deliveryAttempts?: number
   deliveryFailureReason?: string
+  returnReason?: string
   codExpectedAmount?: number
   codCollectedAmount?: number
   courierFeeAmount?: number
+  carrierFeeAmount?: number
   codNetRemitted?: number
   codPaymentStatus?: CodPaymentStatus
   collectedAt?: string
@@ -188,10 +188,15 @@ export interface OrderActionCapabilities {
   canReturn: boolean
 }
 
-/** Payload d'expédition d'une commande (`POST /orders/:id/dispatch`). */
+/**
+ * Payload d'expédition d'une commande (`POST /orders/:id/dispatch`).
+ * `internal` exige `courierId` ; `carrier` exige `carrierId` (+ `courierId`
+ * optionnel = livreur qui encaisse, + `trackingNumber` optionnel).
+ */
 export interface DispatchOrderPayload {
   channel: DeliveryChannel
   courierId?: string
+  carrierId?: string
   trackingNumber?: string
 }
 
@@ -199,6 +204,7 @@ export interface DispatchOrderPayload {
 export interface DeliverOrderPayload {
   collectedAmount?: number
   courierFee?: number
+  carrierFee?: number
   note?: string
 }
 

@@ -1,41 +1,57 @@
-import type { CodPaymentStatus, DeliveryChannel } from '@/types/orders'
+import type { CodPaymentStatus } from '@/types/orders'
 
-/** Écart de caisse : commande livrée dont l'encaissement n'est pas complet. */
+/**
+ * Écart de caisse : commande livrée dont l'encaissement n'est pas complet.
+ * Forme exacte renvoyée par l'API (`reconciliation.service`).
+ */
 export interface ReconciliationDiscrepancy {
   orderId: string
-  shopifyOrderName: string
-  codExpectedAmount: number
-  codCollectedAmount: number
+  orderName: string
   codPaymentStatus: CodPaymentStatus
+  expectedAmount: number
+  collectedAmount: number
+  netRemitted: number
 }
 
-/** Agrégat par livreur (ou bloc transporteurs tiers) pour une journée. */
-export interface ReconciliationGroup {
+/** Ledger CAISSE : agrégat par livreur interne détenant le cash. */
+export interface CourierLedger {
   courierId: string | null
   courierName: string
-  channel: DeliveryChannel
-  deliveredCount: number
+  deliveredOrders: number
   totalCollected: number
-  totalCourierFee: number
+  totalCourierFees: number
+  totalCarrierFees: number
   totalNetRemitted: number
   discrepancies: ReconciliationDiscrepancy[]
 }
 
-/** Totaux consolidés de la journée. */
+/** Ledger DETTES : montant dû à chaque transporteur tiers. */
+export interface CarrierLedger {
+  carrierId: string | null
+  carrierName: string
+  deliveredOrders: number
+  totalDue: number
+}
+
+/** Totaux consolidés (calculés sur le ledger caisse). */
 export interface ReconciliationTotals {
-  deliveredCount: number
+  deliveredOrders: number
   totalCollected: number
-  totalCourierFee: number
+  totalCourierFees: number
+  totalCarrierFees: number
   totalNetRemitted: number
   discrepancyCount: number
 }
 
-/** Récapitulatif de rapprochement de caisse (`GET /orders/reconciliation`). */
+/**
+ * Récapitulatif de rapprochement (`GET /orders/reconciliation`).
+ * Forme à 2 ledgers : `couriers` (caisse) et `carriers` (dettes).
+ */
 export interface ReconciliationSummary {
   date: string
-  courierId?: string | null
   totals: ReconciliationTotals
-  groups: ReconciliationGroup[]
+  couriers: CourierLedger[]
+  carriers: CarrierLedger[]
 }
 
 export interface ReconciliationResponse {
