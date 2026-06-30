@@ -42,6 +42,9 @@ const carrierFee = ref('')
 // Cases « Pas de frais » : forcent un 0 explicite et désactivent le champ.
 const courierNoFee = ref(false)
 const carrierNoFee = ref(false)
+// Vrai quand un livreur encaisse mais que le barème n'a pas pu être chargé :
+// on n'auto-remplit pas 0, l'agent doit saisir le montant manuellement.
+const feeScheduleUnavailable = ref(false)
 const note = ref('')
 
 const isCarrier = computed(() => props.channel === 'carrier')
@@ -125,9 +128,17 @@ function prefilledCarrierFee(): number {
  * Sinon chaîne vide → l'agent doit saisir une valeur (ou cocher « Pas de frais »).
  */
 async function courierPrefill(): Promise<string> {
-  if (!props.hasCourier) return ''
+  if (!props.hasCourier) {
+    feeScheduleUnavailable.value = false
+    return ''
+  }
   await deliveryFeesStore.ensureLoaded()
-  if (!config.value) return ''
+  if (!config.value) {
+    // Barème indisponible : pas de pré-remplissage 0, l'agent saisit manuellement.
+    feeScheduleUnavailable.value = true
+    return ''
+  }
+  feeScheduleUnavailable.value = false
   return String(resolveDeliveryFee(config.value, props.regionCode))
 }
 
@@ -157,6 +168,7 @@ watch(
   async (open) => {
     if (!open) return
     note.value = ''
+    feeScheduleUnavailable.value = false
     collectedAmount.value = String(expectedAmount.value)
 
     // Rémunération livreur : pré-remplie depuis le barème seulement si un livreur encaisse.
@@ -250,10 +262,16 @@ function submit() {
             :disabled="courierNoFee"
             :error="courierFeeInvalid"
             :error-messages="courierFeeInvalid ? 'Valeur requise (≥ 0).' : undefined"
-            :hint="hasCourier ? 'Pré-rempli depuis le barème de la région.' : 'Aucun livreur assigné : pas de rémunération.'"
+            :hint="!hasCourier ? 'Aucun livreur assigné : pas de rémunération.' : (feeScheduleUnavailable ? '' : 'Pré-rempli depuis le barème de la région.')"
             persistent-hint
             hide-details="auto"
           />
+          <div
+            v-if="feeScheduleUnavailable && !courierNoFee"
+            class="text-caption text-warning d-flex align-center ga-1 mt-1"
+          >
+            <v-icon icon="mdi-alert-outline" size="14" /> Barème indisponible, saisir le montant manuellement.
+          </div>
           <v-checkbox
             :model-value="courierNoFee"
             label="Pas de frais"
