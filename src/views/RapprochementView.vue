@@ -11,11 +11,16 @@ import ErrorState from '@/components/ErrorState.vue'
 const store = useReconciliationStore()
 const couriersStore = useCouriersStore()
 const { summary, filters, loading, errorCode } = storeToRefs(store)
-const { activeCouriers } = storeToRefs(couriersStore)
+// Écran historique : on propose TOUS les livreurs (même désactivés) pour pouvoir
+// consulter les journées passées ; les inactifs sont suffixés « (inactif) ».
+const { items: allCouriers } = storeToRefs(couriersStore)
 
 const courierOptions = computed(() => [
   { value: null as string | null, title: 'Tous les livreurs' },
-  ...activeCouriers.value.map((courier) => ({ value: courier.id, title: courier.name })),
+  ...allCouriers.value.map((courier) => ({
+    value: courier.id,
+    title: courier.isActive ? courier.name : `${courier.name} (inactif)`,
+  })),
 ])
 
 const totals = computed(() => summary.value?.totals ?? null)
