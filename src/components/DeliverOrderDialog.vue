@@ -39,6 +39,9 @@ const { byId: carriersById } = storeToRefs(carriersStore)
 const collectedAmount = ref('')
 const courierFee = ref('')
 const carrierFee = ref('')
+// Cases « Pas de frais » : forcent un 0 explicite et désactivent le champ.
+const courierNoFee = ref(false)
+const carrierNoFee = ref(false)
 const note = ref('')
 
 const isCarrier = computed(() => props.channel === 'carrier')
@@ -48,33 +51,63 @@ const expectedAmount = computed(() => {
   return Number.isFinite(value) ? value : 0
 })
 
-const collectedValue = computed(() => {
-  const value = Number(collectedAmount.value)
-  return Number.isFinite(value) && value >= 0 ? value : 0
-})
-const courierFeeValue = computed(() => {
-  const value = Number(courierFee.value)
-  return Number.isFinite(value) && value >= 0 ? value : 0
-})
-const carrierFeeValue = computed(() => {
+/**
+ * Parse un montant saisi : `null` si vide, non numérique ou négatif (bloque la
+ * confirmation), sinon le nombre. `allowZero` permet le `0` explicite (frais) ;
+ * désactivé, `0` est rejeté (le montant encaissé doit être strictement positif).
+ * Aucun repli `0` : une saisie invalide ne doit jamais devenir 0 silencieusement.
+ */
+function parseAmount(raw: string, allowZero = true): number | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') return null
+  const value = Number(trimmed)
+  if (!Number.isFinite(value) || value < 0) return null
+  if (!allowZero && value === 0) return null
+  return value
+}
+
+// Montant encaissé : requis, numérique, strictement positif (jamais 0 ni vide).
+const collectedValue = computed(() => parseAmount(collectedAmount.value, false))
+const courierFeeValue = computed<number | null>(() =>
+  courierNoFee.value ? 0 : parseAmount(courierFee.value),
+)
+const carrierFeeValue = computed<number | null>(() => {
   if (!isCarrier.value) return 0
-  const value = Number(carrierFee.value)
-  return Number.isFinite(value) && value >= 0 ? value : 0
+  return carrierNoFee.value ? 0 : parseAmount(carrierFee.value)
 })
-const netRemitted = computed(() => collectedValue.value - courierFeeValue.value - carrierFeeValue.value)
+
+const netRemitted = computed<number | null>(() => {
+  const collected = collectedValue.value
+  const courier = courierFeeValue.value
+  const carrier = carrierFeeValue.value
+  if (collected === null || courier === null || carrier === null) return null
+  return collected - courier - carrier
+})
 
 /** Aperçu du statut de paiement (le backend recalcule, ceci n'est qu'indicatif). */
 const paymentPreview = computed(() => {
-  if (collectedValue.value >= expectedAmount.value && expectedAmount.value > 0) return 'paid'
-  if (collectedValue.value > 0) return 'partial'
+  const collected = collectedValue.value ?? 0
+  if (collected >= expectedAmount.value && expectedAmount.value > 0) return 'paid'
+  if (collected > 0) return 'partial'
   return 'unpaid'
 })
 const paymentMeta = computed(() => codPaymentStatusMeta[paymentPreview.value])
 
-const collectedInvalid = computed(() => collectedAmount.value !== '' && collectedValue.value < 0)
-const netInvalid = computed(() => netRemitted.value < 0)
+const collectedInvalid = computed(() => collectedValue.value === null)
+const courierFeeInvalid = computed(() => !courierNoFee.value && courierFeeValue.value === null)
+const carrierFeeInvalid = computed(
+  () => isCarrier.value && !carrierNoFee.value && carrierFeeValue.value === null,
+)
+const netInvalid = computed(() => netRemitted.value !== null && netRemitted.value < 0)
+
 const canSubmit = computed(
-  () => !props.submitting && collectedAmount.value !== '' && !collectedInvalid.value && !netInvalid.value,
+  () =>
+    !props.submitting &&
+    collectedValue.value !== null &&
+    courierFeeValue.value !== null &&
+    carrierFeeValue.value !== null &&
+    netRemitted.value !== null &&
+    netRemitted.value >= 0,
 )
 
 /** Coût transporteur pré-rempli : prix indicatif transporteur / shipping / défaut. */
@@ -86,6 +119,39 @@ function prefilledCarrierFee(): number {
   return DEFAULT_CARRIER_FEE
 }
 
+/**
+ * Pré-remplissage attendu de la rémunération livreur : depuis le barème de la
+ * région, uniquement si un livreur encaisse ET que le barème a pu être chargé.
+ * Sinon chaîne vide → l'agent doit saisir une valeur (ou cocher « Pas de frais »).
+ */
+async function courierPrefill(): Promise<string> {
+  if (!props.hasCourier) return ''
+  await deliveryFeesStore.ensureLoaded()
+  if (!config.value) return ''
+  return String(resolveDeliveryFee(config.value, props.regionCode))
+}
+
+async function restoreCourierFee() {
+  courierFee.value = await courierPrefill()
+}
+
+async function restoreCarrierFee() {
+  await carriersStore.ensureLoaded()
+  carrierFee.value = String(prefilledCarrierFee())
+}
+
+function setCourierNoFee(value: boolean | null) {
+  courierNoFee.value = Boolean(value)
+  if (courierNoFee.value) courierFee.value = '0'
+  else void restoreCourierFee()
+}
+
+function setCarrierNoFee(value: boolean | null) {
+  carrierNoFee.value = Boolean(value)
+  if (carrierNoFee.value) carrierFee.value = '0'
+  else void restoreCarrierFee()
+}
+
 watch(
   () => props.modelValue,
   async (open) => {
@@ -94,14 +160,17 @@ watch(
     collectedAmount.value = String(expectedAmount.value)
 
     // Rémunération livreur : pré-remplie depuis le barème seulement si un livreur encaisse.
+    // Sans livreur assigné, « Pas de frais » est coché par défaut (cohérent avec le back).
     if (props.hasCourier) {
-      await deliveryFeesStore.ensureLoaded()
-      courierFee.value = String(resolveDeliveryFee(config.value, props.regionCode))
+      courierNoFee.value = false
+      courierFee.value = await courierPrefill()
     } else {
+      courierNoFee.value = true
       courierFee.value = '0'
     }
 
     // Coût transporteur : uniquement pour le canal carrier.
+    carrierNoFee.value = false
     if (isCarrier.value) {
       await carriersStore.ensureLoaded()
       carrierFee.value = String(prefilledCarrierFee())
@@ -118,12 +187,21 @@ function close() {
 
 function submit() {
   if (!canSubmit.value) return
+  const collected = collectedValue.value
+  const courier = courierFeeValue.value
+  // Gardes de narrowing TS : canSubmit garantit déjà la non-nullité.
+  if (collected === null || courier === null) return
+
   const payload: DeliverOrderPayload = {
-    collectedAmount: collectedValue.value,
-    courierFee: courierFeeValue.value,
+    collectedAmount: collected,
+    courierFee: courier,
     note: note.value.trim() || undefined,
   }
-  if (isCarrier.value) payload.carrierFee = carrierFeeValue.value
+  if (isCarrier.value) {
+    const carrier = carrierFeeValue.value
+    if (carrier === null) return
+    payload.carrierFee = carrier
+  }
   emit('confirm', payload)
 }
 </script>
@@ -156,37 +234,58 @@ function submit() {
           prepend-inner-icon="mdi-cash"
           :suffix="currency === 'XOF' ? 'FCFA' : currency"
           :error="collectedInvalid"
-          :error-messages="collectedInvalid ? 'Montant invalide.' : undefined"
+          :error-messages="collectedInvalid ? 'Montant requis (strictement positif).' : undefined"
           hide-details="auto"
           class="mb-3"
         />
 
-        <v-text-field
-          v-model="courierFee"
-          label="Rémunération livreur"
-          type="number"
-          min="0"
-          prepend-inner-icon="mdi-cash-minus"
-          :suffix="currency === 'XOF' ? 'FCFA' : currency"
-          :hint="hasCourier ? 'Pré-rempli depuis le barème de la région.' : 'Aucun livreur assigné : pas de rémunération.'"
-          persistent-hint
-          hide-details="auto"
-          class="mb-3"
-        />
+        <div class="mb-3">
+          <v-text-field
+            v-model="courierFee"
+            label="Rémunération livreur"
+            type="number"
+            min="0"
+            prepend-inner-icon="mdi-cash-minus"
+            :suffix="currency === 'XOF' ? 'FCFA' : currency"
+            :disabled="courierNoFee"
+            :error="courierFeeInvalid"
+            :error-messages="courierFeeInvalid ? 'Valeur requise (≥ 0).' : undefined"
+            :hint="hasCourier ? 'Pré-rempli depuis le barème de la région.' : 'Aucun livreur assigné : pas de rémunération.'"
+            persistent-hint
+            hide-details="auto"
+          />
+          <v-checkbox
+            :model-value="courierNoFee"
+            label="Pas de frais"
+            density="compact"
+            hide-details
+            @update:model-value="setCourierNoFee"
+          />
+        </div>
 
-        <v-text-field
-          v-if="isCarrier"
-          v-model="carrierFee"
-          label="Coût transporteur"
-          type="number"
-          min="0"
-          prepend-inner-icon="mdi-truck-minus-outline"
-          :suffix="currency === 'XOF' ? 'FCFA' : currency"
-          hint="Pré-rempli : prix transporteur, sinon shipping, sinon défaut."
-          persistent-hint
-          hide-details="auto"
-          class="mb-4"
-        />
+        <div v-if="isCarrier" class="mb-4">
+          <v-text-field
+            v-model="carrierFee"
+            label="Coût transporteur"
+            type="number"
+            min="0"
+            prepend-inner-icon="mdi-truck-minus-outline"
+            :suffix="currency === 'XOF' ? 'FCFA' : currency"
+            :disabled="carrierNoFee"
+            :error="carrierFeeInvalid"
+            :error-messages="carrierFeeInvalid ? 'Valeur requise (≥ 0).' : undefined"
+            hint="Pré-rempli : prix transporteur, sinon shipping, sinon défaut."
+            persistent-hint
+            hide-details="auto"
+          />
+          <v-checkbox
+            :model-value="carrierNoFee"
+            label="Pas de frais"
+            density="compact"
+            hide-details
+            @update:model-value="setCarrierNoFee"
+          />
+        </div>
 
         <v-sheet
           rounded="lg"
