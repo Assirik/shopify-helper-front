@@ -58,6 +58,7 @@ const whatsappItems = computed(() => {
 // Groupe Administration — visible uniquement pour le rôle ADMIN.
 const adminItems = computed(() => [
   { title: 'Livreurs', icon: 'mdi-moped-outline', to: { name: 'livreurs' } },
+  { title: 'Transporteurs', icon: 'mdi-truck-outline', to: { name: 'transporteurs' } },
   { title: 'Configuration livraison', icon: 'mdi-map-marker-distance', to: { name: 'livraison-configuration' } },
   { title: 'Utilisateurs', icon: 'mdi-account-multiple-outline', to: { name: 'utilisateurs' } },
 ])

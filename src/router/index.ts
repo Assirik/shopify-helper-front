@@ -58,6 +58,12 @@ const router = createRouter({
           meta: { requiresAdmin: true },
         },
         {
+          path: 'transporteurs',
+          name: 'transporteurs',
+          component: () => import('@/views/TransporteursView.vue'),
+          meta: { requiresAdmin: true },
+        },
+        {
           path: 'livraison/configuration',
           name: 'livraison-configuration',
           component: () => import('@/views/ConfigurationLivraisonView.vue'),
