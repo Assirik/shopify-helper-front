@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useCouriersStore } from '@/stores/couriers'
+import { useCarriersStore } from '@/stores/carriers'
 import type { DeliveryChannel, DispatchOrderPayload } from '@/types/orders'
 
 const props = defineProps<{
@@ -16,10 +17,13 @@ const emit = defineEmits<{
 }>()
 
 const couriersStore = useCouriersStore()
+const carriersStore = useCarriersStore()
 const { activeCouriers, loading: couriersLoading } = storeToRefs(couriersStore)
+const { activeCarriers, loading: carriersLoading } = storeToRefs(carriersStore)
 
 const channel = ref<DeliveryChannel>('internal')
 const courierId = ref<string | null>(null)
+const carrierId = ref<string | null>(null)
 const trackingNumber = ref('')
 
 const channelOptions: { value: DeliveryChannel; label: string; icon: string }[] = [
@@ -30,11 +34,14 @@ const channelOptions: { value: DeliveryChannel; label: string; icon: string }[] 
 const courierOptions = computed(() =>
   activeCouriers.value.map((courier) => ({ value: courier.id, title: courier.name })),
 )
+const carrierOptions = computed(() =>
+  activeCarriers.value.map((carrier) => ({ value: carrier.id, title: carrier.name })),
+)
 
 const canSubmit = computed(() => {
   if (props.submitting) return false
   if (channel.value === 'internal') return Boolean(courierId.value)
-  return true
+  return Boolean(carrierId.value)
 })
 
 watch(
@@ -43,8 +50,10 @@ watch(
     if (open) {
       channel.value = 'internal'
       courierId.value = null
+      carrierId.value = null
       trackingNumber.value = ''
       void couriersStore.ensureLoaded()
+      void carriersStore.ensureLoaded()
     }
   },
 )
@@ -57,11 +66,13 @@ function close() {
 function submit() {
   if (!canSubmit.value) return
   const payload: DispatchOrderPayload = { channel: channel.value }
-  if (channel.value === 'internal' && courierId.value) {
-    payload.courierId = courierId.value
-  }
-  if (channel.value === 'carrier' && trackingNumber.value.trim()) {
-    payload.trackingNumber = trackingNumber.value.trim()
+  if (channel.value === 'internal') {
+    if (courierId.value) payload.courierId = courierId.value
+  } else {
+    if (carrierId.value) payload.carrierId = carrierId.value
+    // Livreur optionnel : celui qui amène le colis au transporteur et encaisse le cash.
+    if (courierId.value) payload.courierId = courierId.value
+    if (trackingNumber.value.trim()) payload.trackingNumber = trackingNumber.value.trim()
   }
   emit('confirm', payload)
 }
@@ -105,6 +116,7 @@ function submit() {
           </v-btn>
         </v-btn-toggle>
 
+        <!-- Canal interne : livreur requis -->
         <v-select
           v-if="channel === 'internal'"
           v-model="courierId"
@@ -118,13 +130,40 @@ function submit() {
           persistent-hint
         />
 
-        <v-text-field
-          v-else
-          v-model="trackingNumber"
-          label="N° de suivi (optionnel)"
-          prepend-inner-icon="mdi-barcode"
-          hide-details
-        />
+        <!-- Canal transporteur : transporteur requis + livreur optionnel + suivi -->
+        <template v-else>
+          <v-select
+            v-model="carrierId"
+            label="Transporteur tiers"
+            :items="carrierOptions"
+            :loading="carriersLoading"
+            prepend-inner-icon="mdi-truck-delivery-outline"
+            hide-details="auto"
+            class="mb-3"
+            :no-data-text="carriersLoading ? 'Chargement…' : 'Aucun transporteur actif'"
+            :hint="!carrierOptions.length && !carriersLoading ? 'Ajoutez un transporteur dans « Transporteurs ».' : undefined"
+            persistent-hint
+          />
+          <v-select
+            v-model="courierId"
+            label="Livreur qui encaisse (optionnel)"
+            :items="courierOptions"
+            :loading="couriersLoading"
+            prepend-inner-icon="mdi-account-cash-outline"
+            hide-details="auto"
+            clearable
+            class="mb-3"
+            hint="Le livreur qui détient le cash et porte la rémunération livreur."
+            persistent-hint
+            :no-data-text="couriersLoading ? 'Chargement…' : 'Aucun livreur actif'"
+          />
+          <v-text-field
+            v-model="trackingNumber"
+            label="N° de suivi (optionnel)"
+            prepend-inner-icon="mdi-barcode"
+            hide-details
+          />
+        </template>
       </v-card-text>
       <v-card-actions>
         <v-spacer />
