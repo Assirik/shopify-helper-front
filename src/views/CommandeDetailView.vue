@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useOrdersStore } from '@/stores/orders'
+import { useCouriersStore } from '@/stores/couriers'
+import { useCarriersStore } from '@/stores/carriers'
 import {
   orderActionCapabilities,
   type DeliverOrderPayload,
@@ -33,8 +35,12 @@ import OrderReasonDialog from '@/components/OrderReasonDialog.vue'
 const route = useRoute()
 const router = useRouter()
 const store = useOrdersStore()
+const couriersStore = useCouriersStore()
+const carriersStore = useCarriersStore()
 const { detail, detailMessages, detailSummary, detailEvents, detailCapabilities, detailLoading, detailErrorCode } =
   storeToRefs(store)
+const { byId: couriersById } = storeToRefs(couriersStore)
+const { byId: carriersById } = storeToRefs(carriersStore)
 
 const orderId = computed(() => String(route.params.id))
 const snackbar = ref({ show: false, text: '', color: 'neutral' })
@@ -67,6 +73,17 @@ const hasOperationalStatus = computed(() => Boolean(detail.value?.operationalSta
 const hasCodInfo = computed(
   () => detail.value?.codCollectedAmount != null || detail.value?.codExpectedAmount != null,
 )
+const isCarrierChannel = computed(() => detail.value?.deliveryChannel === 'carrier')
+
+// Noms livreur/transporteur résolus depuis les stores (l'API ne renvoie que les ids).
+const assignedCourierName = computed(() => {
+  const id = detail.value?.assignedCourierId
+  return id ? couriersById.value.get(id)?.name : undefined
+})
+const assignedCarrierName = computed(() => {
+  const id = detail.value?.assignedCarrierId
+  return id ? carriersById.value.get(id)?.name : undefined
+})
 
 const lineItems = computed(() => detail.value?.lineItems ?? [])
 const tags = computed(() => detail.value?.tags ?? [])
@@ -178,6 +195,9 @@ async function retryMessage(message: OrderMessage) {
 
 onMounted(() => {
   void store.fetchDetail(orderId.value)
+  // Résolution des noms livreur/transporteur (l'API ne renvoie que les ids).
+  void couriersStore.ensureLoaded()
+  void carriersStore.ensureLoaded()
 })
 </script>
 
@@ -468,11 +488,15 @@ onMounted(() => {
                 />
               </div>
               <dl class="info-grid">
-                <div v-if="detail.deliveryChannel === 'internal'">
+                <div v-if="detail.assignedCourierId">
                   <dt>Livreur assigné</dt>
-                  <dd>{{ formatNullable(detail.assignedCourier?.name) }}</dd>
+                  <dd>{{ formatNullable(assignedCourierName) }}</dd>
                 </div>
-                <div v-if="detail.deliveryChannel === 'carrier'">
+                <div v-if="detail.assignedCarrierId">
+                  <dt>Transporteur</dt>
+                  <dd>{{ formatNullable(assignedCarrierName) }}</dd>
+                </div>
+                <div v-if="isCarrierChannel">
                   <dt>N° de suivi</dt>
                   <dd>{{ formatNullable(detail.carrierTrackingNumber) }}</dd>
                 </div>
@@ -482,6 +506,10 @@ onMounted(() => {
                 <div v-if="detail.deliveryFailureReason">
                   <dt>Motif d’échec</dt>
                   <dd>{{ detail.deliveryFailureReason }}</dd>
+                </div>
+                <div v-if="detail.returnReason">
+                  <dt>Motif de retour</dt>
+                  <dd>{{ detail.returnReason }}</dd>
                 </div>
               </dl>
             </v-card-text>
@@ -496,6 +524,7 @@ onMounted(() => {
               <div class="amount-row"><span class="text-medium-emphasis">Attendu</span><span>{{ formatAmount(detail.codExpectedAmount, detail.currency) }}</span></div>
               <div class="amount-row"><span class="text-medium-emphasis">Encaissé</span><span>{{ formatAmount(detail.codCollectedAmount, detail.currency) }}</span></div>
               <div class="amount-row"><span class="text-medium-emphasis">Rémunération livreur</span><span class="text-error">− {{ formatAmount(detail.courierFeeAmount, detail.currency) }}</span></div>
+              <div v-if="isCarrierChannel || detail.carrierFeeAmount" class="amount-row"><span class="text-medium-emphasis">Coût transporteur</span><span class="text-error">− {{ formatAmount(detail.carrierFeeAmount, detail.currency) }}</span></div>
               <v-divider class="my-2" />
               <div class="amount-row text-subtitle-1 font-weight-bold"><span>Net reversé</span><span>{{ formatAmount(detail.codNetRemitted, detail.currency) }}</span></div>
               <div class="d-flex align-center justify-space-between mt-3">
@@ -661,6 +690,9 @@ onMounted(() => {
       :order-total="detail?.totalPrice"
       :region-code="detail?.deliveryRegionCode"
       :channel="detail?.deliveryChannel"
+      :has-courier="Boolean(detail?.assignedCourierId)"
+      :carrier-id="detail?.assignedCarrierId"
+      :shipping-price="detail?.shippingPrice"
       :currency="detail?.currency"
       :submitting="actionLoading"
       @confirm="submitDelivery"
