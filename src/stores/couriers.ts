@@ -13,6 +13,9 @@ export const useCouriersStore = defineStore('couriers', () => {
   /** Livreurs actifs : alimente les sélecteurs (dispatch, rapprochement). */
   const activeCouriers = computed(() => items.value.filter((c) => c.isActive))
 
+  /** Index id → livreur, pour résoudre les noms à partir d'`assignedCourierId`. */
+  const byId = computed(() => new Map(items.value.map((c) => [c.id, c])))
+
   function setMutating(id: string, active: boolean) {
     const next = new Set(mutatingIds.value)
     if (active) next.add(id)
@@ -59,6 +62,7 @@ export const useCouriersStore = defineStore('couriers', () => {
     errorCode,
     mutatingIds,
     activeCouriers,
+    byId,
     fetchCouriers,
     ensureLoaded,
     setStatus,
