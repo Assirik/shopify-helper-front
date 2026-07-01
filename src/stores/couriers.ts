@@ -35,10 +35,15 @@ export const useCouriersStore = defineStore('couriers', () => {
     }
   }
 
+  // Promesse du chargement en cours : un appelant concurrent l'attend au lieu de
+  // sortir immédiatement (sinon il lirait `byId`/`items` encore vides).
+  let loadPromise: Promise<void> | null = null
+
   /** Charge la liste une seule fois (pour les sélecteurs des dialogs). */
   async function ensureLoaded() {
-    if (items.value.length || loading.value) return
-    await fetchCouriers()
+    if (items.value.length) return
+    if (!loadPromise) loadPromise = fetchCouriers().finally(() => (loadPromise = null))
+    return loadPromise
   }
 
   async function setStatus(id: string, isActive: boolean) {
