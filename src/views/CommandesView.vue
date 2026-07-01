@@ -34,6 +34,9 @@ const confirmationStatus = ref<string | null>(null)
 const operationalStatus = ref<string | null>(null)
 const notificationStatus = ref<string | null>(null)
 const codFilter = ref<boolean | null>(null)
+// Désencombrement : les commandes terminées (livrées ET payées) sont masquées par
+// défaut. Le switch les fait réapparaître sans rien supprimer.
+const showCompleted = ref(false)
 
 const confirmationOptions = Object.entries(customerConfirmationStatusMeta).map(([value, meta]) => ({
   value,
@@ -76,7 +79,8 @@ const hasActiveFilters = computed(
     confirmationStatus.value !== null ||
     operationalStatus.value !== null ||
     notificationStatus.value !== null ||
-    codFilter.value !== null,
+    codFilter.value !== null ||
+    showCompleted.value,
 )
 
 function applyFilters() {
@@ -87,6 +91,7 @@ function applyFilters() {
     operationalStatus: operationalStatus.value,
     status: notificationStatus.value,
     cod: codFilter.value,
+    hideCompleted: !showCompleted.value,
   })
 }
 
@@ -97,6 +102,7 @@ function resetFilters() {
   operationalStatus.value = null
   notificationStatus.value = null
   codFilter.value = null
+  showCompleted.value = false
   store.resetFilters()
   void store.fetchList()
 }
@@ -273,7 +279,7 @@ onMounted(() => {
           clearable
           @update:model-value="applyFilters"
         />
-        <div class="d-flex align-center ga-2">
+        <div class="d-flex align-center ga-2 filters-actions">
           <v-btn color="primary" prepend-icon="mdi-magnify" :loading="loading" @click="applyFilters">
             Filtrer
           </v-btn>
@@ -285,6 +291,23 @@ onMounted(() => {
           >
             Réinitialiser
           </v-btn>
+          <v-spacer />
+          <v-switch
+            v-model="showCompleted"
+            color="primary"
+            density="compact"
+            hide-details
+            inset
+            class="show-completed-switch"
+            @update:model-value="applyFilters"
+          >
+            <template #label>
+              <span class="d-inline-flex align-center ga-1 text-body-2">
+                <v-icon icon="mdi-check-all" size="16" />
+                Afficher les terminées
+              </span>
+            </template>
+          </v-switch>
         </div>
       </div>
     </v-card>
@@ -484,6 +507,15 @@ onMounted(() => {
   .filters-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+
+/* La rangée d'actions (Filtrer / Réinitialiser + switch) occupe toute la largeur
+   pour que le switch « Afficher les terminées » s'aligne à droite. */
+.filters-actions {
+  grid-column: 1 / -1;
+}
+.show-completed-switch {
+  flex: 0 0 auto;
 }
 
 .orders-table-card {

@@ -17,6 +17,8 @@ export interface OrderListParams {
   orderName?: string
   phone?: string
   cod?: boolean
+  /** Exclut les commandes terminées (livrées ET intégralement encaissées). */
+  hideCompleted?: boolean
 }
 
 export const ordersService = {

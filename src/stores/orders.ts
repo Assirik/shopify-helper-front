@@ -23,6 +23,8 @@ export interface OrderFilters {
   operationalStatus: string | null
   status: string | null
   cod: boolean | null
+  /** Masque les commandes terminées (livrées ET payées) — activé par défaut. */
+  hideCompleted: boolean
 }
 
 const emptyFilters = (): OrderFilters => ({
@@ -32,6 +34,7 @@ const emptyFilters = (): OrderFilters => ({
   operationalStatus: null,
   status: null,
   cod: null,
+  hideCompleted: true,
 })
 
 /** Capabilities d'une ligne : API si présente, sinon repli local. */
@@ -90,6 +93,7 @@ export const useOrdersStore = defineStore('orders', () => {
     if (filters.operationalStatus) params.operationalStatus = filters.operationalStatus
     if (filters.status) params.status = filters.status
     if (filters.cod !== null) params.cod = filters.cod
+    if (filters.hideCompleted) params.hideCompleted = true
     return params
   }
 
