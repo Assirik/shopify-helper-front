@@ -46,6 +46,14 @@ function goOrders() {
   })
 }
 
+function goOperational(operationalStatus: string) {
+  void router.push({ name: 'commandes', query: { operationalStatus } })
+}
+
+function goReconciliation() {
+  void router.push({ name: 'rapprochement' })
+}
+
 function openOrder(id: string) {
   void router.push({ name: 'commande-detail', params: { id } })
 }
@@ -153,7 +161,183 @@ onMounted(() => {
             </div>
           </v-card-text>
         </v-card>
+      </div>
 
+      <!-- Flux de livraison -->
+      <div class="section-label mt-6">
+        <v-icon icon="mdi-truck-fast-outline" size="18" />
+        <span>Flux de livraison</span>
+      </div>
+      <div class="ops-grid">
+        <!-- À livrer -->
+        <v-card
+          border
+          flat
+          rounded="lg"
+          class="kpi-clickable"
+          role="button"
+          tabindex="0"
+          @click="goOperational('to_deliver')"
+          @keyup.enter="goOperational('to_deliver')"
+        >
+          <v-card-text>
+            <v-icon icon="mdi-arrow-top-right" size="18" class="kpi-corner text-medium-emphasis" />
+            <div class="d-flex align-center ga-3 mb-3">
+              <v-avatar color="warning" variant="tonal" rounded="lg" size="40">
+                <v-icon icon="mdi-package-variant-closed" />
+              </v-avatar>
+              <span class="text-body-2 font-weight-medium text-medium-emphasis">À livrer</span>
+            </div>
+            <div class="text-h4 font-weight-bold">{{ formatNullable(stats.toDeliver) }}</div>
+            <div class="text-caption text-medium-emphasis mt-2">En attente d’expédition · échecs inclus</div>
+          </v-card-text>
+        </v-card>
+
+        <!-- En cours -->
+        <v-card
+          border
+          flat
+          rounded="lg"
+          class="kpi-clickable"
+          role="button"
+          tabindex="0"
+          @click="goOperational('in_delivery')"
+          @keyup.enter="goOperational('in_delivery')"
+        >
+          <v-card-text>
+            <v-icon icon="mdi-arrow-top-right" size="18" class="kpi-corner text-medium-emphasis" />
+            <div class="d-flex align-center ga-3 mb-3">
+              <v-avatar color="info" variant="tonal" rounded="lg" size="40">
+                <v-icon icon="mdi-truck-fast-outline" />
+              </v-avatar>
+              <span class="text-body-2 font-weight-medium text-medium-emphasis">En cours</span>
+            </div>
+            <div class="text-h4 font-weight-bold">{{ formatNullable(stats.inDelivery) }}</div>
+            <div class="text-caption text-medium-emphasis mt-2">Colis en tournée chez les livreurs</div>
+          </v-card-text>
+        </v-card>
+
+        <!-- Livrées aujourd'hui -->
+        <v-card border flat rounded="lg">
+          <v-card-text>
+            <div class="d-flex align-center ga-3 mb-3">
+              <v-avatar color="success" variant="tonal" rounded="lg" size="40">
+                <v-icon icon="mdi-check-circle-outline" />
+              </v-avatar>
+              <span class="text-body-2 font-weight-medium text-medium-emphasis">Livrées aujourd’hui</span>
+            </div>
+            <div class="text-h4 font-weight-bold text-success">{{ formatNullable(stats.deliveredToday) }}</div>
+            <div class="text-caption text-medium-emphasis mt-2">Livraisons finalisées sur la journée</div>
+          </v-card-text>
+        </v-card>
+      </div>
+
+      <!-- Caisse du jour -->
+      <div class="section-label mt-5">
+        <v-icon icon="mdi-cash-register" size="18" />
+        <span>Caisse du jour</span>
+        <v-btn
+          variant="text"
+          size="small"
+          color="primary"
+          append-icon="mdi-arrow-right"
+          class="ml-auto"
+          @click="goReconciliation"
+        >
+          Rapprochement
+        </v-btn>
+      </div>
+      <div class="ops-grid">
+        <!-- Cash encaissé -->
+        <v-card
+          border
+          flat
+          rounded="lg"
+          class="kpi-clickable"
+          role="button"
+          tabindex="0"
+          @click="goReconciliation"
+          @keyup.enter="goReconciliation"
+        >
+          <v-card-text>
+            <v-icon icon="mdi-arrow-top-right" size="18" class="kpi-corner text-medium-emphasis" />
+            <div class="d-flex align-center ga-3 mb-3">
+              <v-avatar color="primary" variant="tonal" rounded="lg" size="40">
+                <v-icon icon="mdi-cash-multiple" />
+              </v-avatar>
+              <span class="text-body-2 font-weight-medium text-medium-emphasis">Cash encaissé</span>
+            </div>
+            <div class="text-h5 font-weight-bold">{{ formatAmount(stats.cashCollectedToday, 'XOF') }}</div>
+            <div class="text-caption text-medium-emphasis mt-2">COD collecté sur les livraisons du jour</div>
+          </v-card-text>
+        </v-card>
+
+        <!-- Net à reverser -->
+        <v-card
+          border
+          flat
+          rounded="lg"
+          class="kpi-clickable"
+          role="button"
+          tabindex="0"
+          @click="goReconciliation"
+          @keyup.enter="goReconciliation"
+        >
+          <v-card-text>
+            <v-icon icon="mdi-arrow-top-right" size="18" class="kpi-corner text-medium-emphasis" />
+            <div class="d-flex align-center ga-3 mb-3">
+              <v-avatar color="secondary" variant="tonal" rounded="lg" size="40">
+                <v-icon icon="mdi-wallet-outline" />
+              </v-avatar>
+              <span class="text-body-2 font-weight-medium text-medium-emphasis">Net à reverser</span>
+            </div>
+            <div class="text-h5 font-weight-bold">{{ formatAmount(stats.netToRemitToday, 'XOF') }}</div>
+            <div class="text-caption text-medium-emphasis mt-2">Dû en caisse par les livreurs</div>
+          </v-card-text>
+        </v-card>
+
+        <!-- Écarts de caisse -->
+        <v-card
+          border
+          flat
+          rounded="lg"
+          class="kpi-clickable"
+          :color="stats.cashDiscrepancies ? 'error' : undefined"
+          :variant="stats.cashDiscrepancies ? 'tonal' : undefined"
+          role="button"
+          tabindex="0"
+          @click="goReconciliation"
+          @keyup.enter="goReconciliation"
+        >
+          <v-card-text>
+            <v-icon
+              icon="mdi-arrow-top-right"
+              size="18"
+              class="kpi-corner"
+              :class="stats.cashDiscrepancies ? 'text-error' : 'text-medium-emphasis'"
+            />
+            <div class="d-flex align-center ga-3 mb-3">
+              <v-avatar :color="stats.cashDiscrepancies ? 'error' : 'neutral'" variant="tonal" rounded="lg" size="40">
+                <v-icon icon="mdi-alert-decagram-outline" />
+              </v-avatar>
+              <span class="text-body-2 font-weight-medium" :class="stats.cashDiscrepancies ? 'text-error' : 'text-medium-emphasis'">
+                Écarts de caisse
+              </span>
+            </div>
+            <div class="text-h4 font-weight-bold" :class="stats.cashDiscrepancies ? 'text-error' : ''">
+              {{ formatNullable(stats.cashDiscrepancies) }}
+            </div>
+            <div class="text-caption text-medium-emphasis mt-2">Livraisons à encaissement incomplet</div>
+          </v-card-text>
+        </v-card>
+      </div>
+
+      <!-- technical KPI grid -->
+       <div class="section-label mt-5">
+        <v-icon icon="mdi-cogs" size="18" />
+        <span>Infos Techniques</span>
+      </div>
+       <div class="kpi-grid mt-2">
         <!-- Échecs & fallback SMS -->
         <v-card border flat rounded="lg">
           <v-card-text>
@@ -220,7 +404,7 @@ onMounted(() => {
       </div>
 
       <!-- Secondary zone -->
-      <div class="secondary-grid mt-4">
+      <div class="secondary-grid mt-6">
         <!-- À traiter preview -->
         <v-card border flat rounded="lg" class="overflow-hidden">
           <v-card-title class="d-flex align-center ga-2 text-subtitle-1 font-weight-bold">
@@ -313,9 +497,48 @@ onMounted(() => {
   }
 }
 
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgb(var(--v-theme-on-surface));
+  opacity: 0.7;
+}
+.section-label > .v-btn {
+  opacity: 1;
+}
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 1100px) {
+  .ops-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .ops-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .kpi-clickable {
   cursor: pointer;
   position: relative;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.kpi-clickable:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
 }
 
 .kpi-corner {

@@ -3,10 +3,15 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useOrdersStore } from '@/stores/orders'
-import { orderActionCapabilities, type OrderListItem } from '@/types/orders'
+import {
+  orderActionCapabilities,
+  type OrderActionCapabilities,
+  type OrderListItem,
+} from '@/types/orders'
 import {
   customerConfirmationStatusMeta,
   notificationStatusMeta,
+  operationalStatusMeta,
 } from '@/constants/status'
 import { formatAmount, formatDateTime, formatNullable, formatPhone } from '@/utils/format'
 import { orderActionErrorMessage } from '@/utils/orderErrors'
@@ -26,10 +31,18 @@ const pendingCancellation = ref<OrderListItem | null>(null)
 const orderNameInput = ref('')
 const phoneInput = ref('')
 const confirmationStatus = ref<string | null>(null)
+const operationalStatus = ref<string | null>(null)
 const notificationStatus = ref<string | null>(null)
 const codFilter = ref<boolean | null>(null)
+// Désencombrement : les commandes terminées (livrées ET payées) sont masquées par
+// défaut. Le switch les fait réapparaître sans rien supprimer.
+const showCompleted = ref(false)
 
 const confirmationOptions = Object.entries(customerConfirmationStatusMeta).map(([value, meta]) => ({
+  value,
+  title: meta.label,
+}))
+const operationalOptions = Object.entries(operationalStatusMeta).map(([value, meta]) => ({
   value,
   title: meta.label,
 }))
@@ -37,6 +50,10 @@ const notificationOptions = Object.entries(notificationStatusMeta).map(([value, 
   value,
   title: meta.label,
 }))
+
+/** Capabilities d'une ligne : API si présente, sinon repli local. */
+const rowCapabilities = (item: OrderListItem): OrderActionCapabilities =>
+  item.capabilities ?? orderActionCapabilities(item.customerConfirmationStatus, item.operationalStatus)
 const codOptions = [
   { value: true, title: 'COD uniquement' },
   { value: false, title: 'Hors COD' },
@@ -48,6 +65,7 @@ const headers = [
   { title: 'Région', key: 'region', sortable: false, width: 140 },
   { title: 'Montant', key: 'amount', sortable: false, width: 150 },
   { title: 'Confirmation', key: 'customerConfirmationStatus', sortable: false, width: 160 },
+  { title: 'Opérationnel', key: 'operationalStatus', sortable: false, width: 170 },
   { title: 'Notification', key: 'notificationStatus', sortable: false, width: 150 },
   { title: 'Date', key: 'createdAt', sortable: false, width: 150 },
   { title: 'Actions', key: 'actions', sortable: false, width: 130, align: 'end' as const },
@@ -59,8 +77,10 @@ const hasActiveFilters = computed(
     Boolean(orderNameInput.value) ||
     Boolean(phoneInput.value) ||
     confirmationStatus.value !== null ||
+    operationalStatus.value !== null ||
     notificationStatus.value !== null ||
-    codFilter.value !== null,
+    codFilter.value !== null ||
+    showCompleted.value,
 )
 
 function applyFilters() {
@@ -68,8 +88,10 @@ function applyFilters() {
     orderName: orderNameInput.value,
     phone: phoneInput.value,
     customerConfirmationStatus: confirmationStatus.value,
+    operationalStatus: operationalStatus.value,
     status: notificationStatus.value,
     cod: codFilter.value,
+    hideCompleted: !showCompleted.value,
   })
 }
 
@@ -77,8 +99,10 @@ function resetFilters() {
   orderNameInput.value = ''
   phoneInput.value = ''
   confirmationStatus.value = null
+  operationalStatus.value = null
   notificationStatus.value = null
   codFilter.value = null
+  showCompleted.value = false
   store.resetFilters()
   void store.fetchList()
 }
@@ -159,6 +183,7 @@ onMounted(() => {
   // Pré-remplissage depuis la navigation Clients ou Dashboard.
   const phone = route.query.phone
   const status = route.query.customerConfirmationStatus
+  const operational = route.query.operationalStatus
   const initialFilters: Partial<typeof filters.value> = {}
 
   if (typeof phone === 'string' && phone) {
@@ -169,6 +194,10 @@ onMounted(() => {
   if (typeof status === 'string' && status in customerConfirmationStatusMeta) {
     confirmationStatus.value = status
     initialFilters.customerConfirmationStatus = status
+  }
+  if (typeof operational === 'string' && operational in operationalStatusMeta) {
+    operationalStatus.value = operational
+    initialFilters.operationalStatus = operational
   }
 
   if (Object.keys(initialFilters).length) void store.applyFilters(initialFilters)
@@ -227,6 +256,14 @@ onMounted(() => {
           @update:model-value="applyFilters"
         />
         <v-select
+          v-model="operationalStatus"
+          label="Statut opérationnel"
+          :items="operationalOptions"
+          hide-details
+          clearable
+          @update:model-value="applyFilters"
+        />
+        <v-select
           v-model="notificationStatus"
           label="Statut de notification"
           :items="notificationOptions"
@@ -242,7 +279,7 @@ onMounted(() => {
           clearable
           @update:model-value="applyFilters"
         />
-        <div class="d-flex align-center ga-2">
+        <div class="d-flex align-center ga-2 filters-actions">
           <v-btn color="primary" prepend-icon="mdi-magnify" :loading="loading" @click="applyFilters">
             Filtrer
           </v-btn>
@@ -254,6 +291,23 @@ onMounted(() => {
           >
             Réinitialiser
           </v-btn>
+          <v-spacer />
+          <v-switch
+            v-model="showCompleted"
+            color="primary"
+            density="compact"
+            hide-details
+            inset
+            class="show-completed-switch"
+            @update:model-value="applyFilters"
+          >
+            <template #label>
+              <span class="d-inline-flex align-center ga-1 text-body-2">
+                <v-icon icon="mdi-check-all" size="16" />
+                Afficher les terminées
+              </span>
+            </template>
+          </v-switch>
         </div>
       </div>
     </v-card>
@@ -361,6 +415,11 @@ onMounted(() => {
           <StatusChip :table="customerConfirmationStatusMeta" :value="item.customerConfirmationStatus" />
         </template>
 
+        <template #item.operationalStatus="{ item }">
+          <StatusChip v-if="item.operationalStatus" :table="operationalStatusMeta" :value="item.operationalStatus" />
+          <span v-else class="text-medium-emphasis">—</span>
+        </template>
+
         <template #item.notificationStatus="{ item }">
           <StatusChip :table="notificationStatusMeta" :value="item.notificationStatus" />
         </template>
@@ -371,7 +430,7 @@ onMounted(() => {
 
         <template #item.actions="{ item }">
           <div class="d-flex justify-end ga-1" @click.stop>
-            <v-tooltip v-if="orderActionCapabilities(item.customerConfirmationStatus).canConfirm" text="Confirmer" location="top">
+            <v-tooltip v-if="rowCapabilities(item).canConfirm" text="Confirmer" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
@@ -385,7 +444,7 @@ onMounted(() => {
                 />
               </template>
             </v-tooltip>
-            <v-tooltip v-if="orderActionCapabilities(item.customerConfirmationStatus).canRemind" text="Relancer" location="top">
+            <v-tooltip v-if="rowCapabilities(item).canRemind" text="Relancer" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
@@ -399,7 +458,7 @@ onMounted(() => {
                 />
               </template>
             </v-tooltip>
-            <v-tooltip v-if="orderActionCapabilities(item.customerConfirmationStatus).canCancel" text="Annuler" location="top">
+            <v-tooltip v-if="rowCapabilities(item).canCancel" text="Annuler" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
@@ -448,6 +507,15 @@ onMounted(() => {
   .filters-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+
+/* La rangée d'actions (Filtrer / Réinitialiser + switch) occupe toute la largeur
+   pour que le switch « Afficher les terminées » s'aligne à droite. */
+.filters-actions {
+  grid-column: 1 / -1;
+}
+.show-completed-switch {
+  flex: 0 0 auto;
 }
 
 .orders-table-card {

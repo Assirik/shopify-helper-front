@@ -40,6 +40,7 @@ const navItems = computed(() => [
   },
   { title: 'Commandes', icon: 'mdi-cart-outline', to: { name: 'commandes' } },
   { title: 'Clients', icon: 'mdi-account-group-outline', to: { name: 'clients' } },
+  { title: 'Rapprochement', icon: 'mdi-cash-register', to: { name: 'rapprochement' } },
   { title: 'Messages', icon: 'mdi-message-text-outline', to: { name: 'messages' } },
 ])
 
@@ -56,6 +57,9 @@ const whatsappItems = computed(() => {
 
 // Groupe Administration — visible uniquement pour le rôle ADMIN.
 const adminItems = computed(() => [
+  { title: 'Livreurs', icon: 'mdi-moped-outline', to: { name: 'livreurs' } },
+  { title: 'Transporteurs', icon: 'mdi-truck-outline', to: { name: 'transporteurs' } },
+  { title: 'Configuration livraison', icon: 'mdi-map-marker-distance', to: { name: 'livraison-configuration' } },
   { title: 'Utilisateurs', icon: 'mdi-account-multiple-outline', to: { name: 'utilisateurs' } },
 ])
 
