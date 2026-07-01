@@ -11,9 +11,16 @@ import type {
 /** Brouillon d'édition : montant saisi par code région (chaîne pour les inputs). */
 type RegionDraft = Record<string, string>
 
-const toAmount = (raw: string): number => {
-  const value = Number(raw)
-  return Number.isFinite(value) && value >= 0 ? Math.round(value) : 0
+/**
+ * Parse un montant saisi : `null` si vide, non numérique ou négatif. Aucun repli
+ * `0` : une saisie invalide bloque l'enregistrement plutôt que de masquer l'erreur.
+ */
+const parseAmount = (raw: string): number | null => {
+  const trimmed = raw.trim()
+  if (trimmed === '') return null
+  const value = Number(trimmed)
+  if (!Number.isFinite(value) || value < 0) return null
+  return Math.round(value)
 }
 
 export const useDeliveryFeesStore = defineStore('deliveryFees', () => {
@@ -31,6 +38,18 @@ export const useDeliveryFeesStore = defineStore('deliveryFees', () => {
     const keys = new Set([...Object.keys(regionFees), ...Object.keys(baselineRegions)])
     return [...keys].some((code) => (regionFees[code] ?? '') !== (baselineRegions[code] ?? ''))
   })
+
+  /** Défaut global invalide (vide ou non numérique/négatif) : requis. */
+  const defaultFeeInvalid = computed(() => parseAmount(defaultFee.value) === null)
+  /** Codes région dont le montant saisi est non vide mais invalide. */
+  const invalidRegionCodes = computed(() =>
+    Object.entries(regionFees)
+      .filter(([, raw]) => raw.trim() !== '' && parseAmount(raw) === null)
+      .map(([code]) => code),
+  )
+  const hasErrors = computed(() => defaultFeeInvalid.value || invalidRegionCodes.value.length > 0)
+  /** Enregistrement possible : des changements valides, aucune saisie invalide. */
+  const canSave = computed(() => dirty.value && !hasErrors.value)
 
   function applyConfig(next: DeliveryFeeConfig) {
     config.value = next
@@ -55,9 +74,10 @@ export const useDeliveryFeesStore = defineStore('deliveryFees', () => {
 
   function buildPayload(): UpdateDeliveryFeeConfigPayload {
     const fees: RegionDeliveryFee[] = Object.entries(regionFees)
-      .filter(([, raw]) => raw.trim() !== '')
-      .map(([regionCode, raw]) => ({ regionCode, amount: toAmount(raw) }))
-    return { defaultFee: toAmount(defaultFee.value), regionFees: fees }
+      .map(([regionCode, raw]) => ({ regionCode, amount: parseAmount(raw) }))
+      .filter((fee): fee is RegionDeliveryFee => fee.amount !== null)
+    // `canSave` garantit la validité ; le `?? 0` n'est qu'un garde-fou de typage.
+    return { defaultFee: parseAmount(defaultFee.value) ?? 0, regionFees: fees }
   }
 
   async function fetchConfig() {
@@ -72,14 +92,19 @@ export const useDeliveryFeesStore = defineStore('deliveryFees', () => {
     }
   }
 
+  // Promesse du chargement en cours : un appelant concurrent l'attend au lieu de
+  // sortir immédiatement (sinon il lirait `config` encore null).
+  let loadPromise: Promise<void> | null = null
+
   /** Charge le barème une seule fois (pour pré-remplir le dialog de livraison). */
   async function ensureLoaded() {
-    if (config.value || loading.value) return
-    await fetchConfig()
+    if (config.value) return
+    if (!loadPromise) loadPromise = fetchConfig().finally(() => (loadPromise = null))
+    return loadPromise
   }
 
   async function save() {
-    if (!dirty.value) return false
+    if (!canSave.value) return false
     saving.value = true
     try {
       applyConfig(await deliveryFeesService.update(buildPayload()))
@@ -97,6 +122,9 @@ export const useDeliveryFeesStore = defineStore('deliveryFees', () => {
     saving,
     loadErrorCode,
     dirty,
+    defaultFeeInvalid,
+    invalidRegionCodes,
+    canSave,
     fetchConfig,
     ensureLoaded,
     setRegionFee,

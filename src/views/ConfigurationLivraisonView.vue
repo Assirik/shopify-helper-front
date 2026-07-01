@@ -6,7 +6,18 @@ import { SENEGAL_REGIONS } from '@/constants/senegalRegions'
 import { formatDateTime, formatNullable } from '@/utils/format'
 
 const store = useDeliveryFeesStore()
-const { defaultFee, regionFees, loading, saving, loadErrorCode, dirty, config } = storeToRefs(store)
+const {
+  defaultFee,
+  regionFees,
+  loading,
+  saving,
+  loadErrorCode,
+  dirty,
+  config,
+  defaultFeeInvalid,
+  invalidRegionCodes,
+  canSave,
+} = storeToRefs(store)
 
 const snackbar = ref({ show: false, text: '', color: 'neutral' })
 
@@ -76,7 +87,9 @@ onMounted(() => {
             min="0"
             prepend-inner-icon="mdi-cash"
             suffix="FCFA"
-            hide-details
+            :error="defaultFeeInvalid"
+            :error-messages="defaultFeeInvalid ? 'Montant requis (nombre positif ou nul).' : undefined"
+            hide-details="auto"
             style="max-width: 280px"
           />
         </v-card-text>
@@ -106,7 +119,9 @@ onMounted(() => {
                 density="compact"
                 placeholder="Défaut"
                 suffix="FCFA"
-                hide-details
+                :error="invalidRegionCodes.includes(region.code)"
+                :error-messages="invalidRegionCodes.includes(region.code) ? 'Montant invalide.' : undefined"
+                hide-details="auto"
                 clearable
                 style="max-width: 200px"
                 @update:model-value="(value: string) => store.setRegionFee(region.code, value ?? '')"
@@ -119,12 +134,18 @@ onMounted(() => {
 
     <v-slide-y-reverse-transition>
       <v-sheet v-if="dirty" border class="fees-footer d-flex align-center ga-3 px-6 py-3">
-        <span class="text-body-2 text-medium-emphasis d-flex align-center ga-1">
+        <span
+          v-if="canSave"
+          class="text-body-2 text-medium-emphasis d-flex align-center ga-1"
+        >
           <v-icon icon="mdi-circle" size="10" color="warning" /> Modifications non enregistrées
+        </span>
+        <span v-else class="text-body-2 text-error d-flex align-center ga-1">
+          <v-icon icon="mdi-alert-circle-outline" size="16" /> Corrigez les montants invalides avant d’enregistrer.
         </span>
         <v-spacer />
         <v-btn variant="outlined" border="sm opacity-25" :disabled="saving" @click="cancel">Annuler</v-btn>
-        <v-btn color="primary" prepend-icon="mdi-content-save-outline" :loading="saving" :disabled="!dirty" @click="save">
+        <v-btn color="primary" prepend-icon="mdi-content-save-outline" :loading="saving" :disabled="!canSave" @click="save">
           Enregistrer
         </v-btn>
       </v-sheet>
