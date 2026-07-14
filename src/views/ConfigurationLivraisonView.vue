@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDeliveryFeesStore } from '@/stores/deliveryFees'
 import { SENEGAL_REGIONS } from '@/constants/senegalRegions'
-import { formatDateTime, formatNullable } from '@/utils/format'
+import { formatDateTime, formatUpdatedBy } from '@/utils/format'
 
 const store = useDeliveryFeesStore()
 const {
@@ -56,7 +56,7 @@ onMounted(() => {
           </p>
           <div v-if="config?.updatedAt" class="text-caption text-medium-emphasis d-flex align-center ga-1">
             <v-icon icon="mdi-history" size="15" />
-            Modifié par <strong>{{ formatNullable(config?.updatedBy) }}</strong> le {{ formatDateTime(config?.updatedAt) }}
+            Modifié par <strong>{{ formatUpdatedBy(config?.updatedBy) }}</strong> le {{ formatDateTime(config?.updatedAt) }}
           </div>
         </div>
       </div>

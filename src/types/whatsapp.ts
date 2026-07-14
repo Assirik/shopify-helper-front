@@ -1,3 +1,5 @@
+import type { UpdatedByUser } from '@/types/users'
+
 export interface WhatsappTemplateButton {
   type?: string
   text: string
@@ -51,7 +53,8 @@ export interface RegionalVariable {
 export interface MessageVariableConfig {
   shippingNote?: RegionalVariable
   paymentMethod?: RegionalVariable
-  updatedBy?: string
+  /** Peuplé par le backend ; `string` = ObjectId brut d'anciennes réponses. */
+  updatedBy?: UpdatedByUser | string | null
   updatedAt?: string
 }
 

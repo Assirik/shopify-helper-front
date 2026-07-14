@@ -67,7 +67,7 @@ export const useWhatsappConfigStore = defineStore('whatsappConfig', () => {
   const fields = reactive<FieldValues>(emptyFields())
   const baseline = reactive<FieldValues>(emptyFields())
   const serverErrors = reactive<Partial<Record<ConfigFieldKey, string>>>(emptyErrors())
-  const updatedBy = ref<string | null>(null)
+  const updatedBy = ref<MessageVariableConfig['updatedBy']>(null)
   const updatedAt = ref<string | null>(null)
   const loading = ref(false)
   const saving = ref(false)

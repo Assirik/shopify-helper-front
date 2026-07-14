@@ -30,6 +30,22 @@ export function formatNullable(value: string | number | null | undefined): strin
   return text ? text : EM_DASH
 }
 
+/** ObjectId Mongo brut (24 hex) : jamais affiché tel quel à l'utilisateur. */
+const OBJECT_ID_PATTERN = /^[a-f0-9]{24}$/i
+
+/**
+ * Nom de l'auteur d'une modification (`updatedBy`). Le backend renvoie la
+ * référence peuplée `{ userName }` ; un ObjectId brut (ancienne réponse en
+ * cache) est masqué derrière le tiret plutôt qu'affiché.
+ */
+export function formatUpdatedBy(
+  value: { userName?: string | null } | string | null | undefined,
+): string {
+  if (value && typeof value === 'object') return formatNullable(value.userName)
+  if (typeof value === 'string' && OBJECT_ID_PATTERN.test(value.trim())) return EM_DASH
+  return formatNullable(value)
+}
+
 /** Montant + devise au format FR (ex : « 32 000 FCFA »). */
 export function formatAmount(
   value: string | number | null | undefined,

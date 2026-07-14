@@ -1,3 +1,5 @@
+import type { UpdatedByUser } from '@/types/users'
+
 /** Montant de rémunération livreur pour une région (`regionCode` = `SN_*`). */
 export interface RegionDeliveryFee {
   regionCode: string
@@ -8,7 +10,8 @@ export interface RegionDeliveryFee {
 export interface DeliveryFeeConfig {
   defaultFee: number
   regionFees: RegionDeliveryFee[]
-  updatedBy?: string | null
+  /** Peuplé par le backend ; `string` = ObjectId brut d'anciennes réponses. */
+  updatedBy?: UpdatedByUser | string | null
   updatedAt?: string | null
 }
 

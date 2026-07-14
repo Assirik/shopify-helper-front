@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useWhatsappConfigStore } from '@/stores/whatsappConfig'
 import { CONFIG_MAX_LENGTH, type ConfigFieldKey } from '@/types/whatsapp'
-import { formatDateTime, formatNullable } from '@/utils/format'
+import { formatDateTime, formatUpdatedBy } from '@/utils/format'
 
 const store = useWhatsappConfigStore()
 const { fields, errors, updatedBy, updatedAt, loading, saving, loadErrorCode, dirty, canSave, errorCount } =
@@ -71,7 +71,7 @@ onMounted(() => {
           </p>
           <div v-if="updatedBy || updatedAt" class="text-caption text-medium-emphasis d-flex align-center ga-1">
             <v-icon icon="mdi-history" size="15" />
-            Modifié par <strong>{{ formatNullable(updatedBy) }}</strong> le {{ formatDateTime(updatedAt) }}
+            Modifié par <strong>{{ formatUpdatedBy(updatedBy) }}</strong> le {{ formatDateTime(updatedAt) }}
           </div>
         </div>
       </div>

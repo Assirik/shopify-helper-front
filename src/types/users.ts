@@ -59,6 +59,17 @@ export interface BootstrapPayload {
 /** `400 ValidationFailed.details` : map champ → message backend. */
 export type ValidationDetails = Record<string, string>
 
+/**
+ * Référence utilisateur peuplée renvoyée dans les champs `updatedBy` des configs
+ * (barème livraison, variables de message) : le backend fait un
+ * `populate('updatedBy', 'userName')`.
+ */
+export interface UpdatedByUser {
+  _id?: string
+  id?: string
+  userName?: string | null
+}
+
 export const normalizeAdminUser = (user: AuthApiUser): AdminUser => ({
   id: user.id || user._id || '',
   userName: user.userName,
