@@ -57,6 +57,9 @@ export interface OrderListItem extends OrderOperationalFields {
   customerConfirmationStatus: string
   notificationStatus: string
   createdAt: string
+  /** Dernière note interne (Lot 0 · F16) — absente tant que le backend ne l'expose pas. */
+  lastNoteText?: string
+  lastNoteAt?: string
   /** Capabilities calculées par le backend (source de vérité). */
   capabilities?: OrderActionCapabilities
 }
