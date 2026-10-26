@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import { useDisplay } from 'vuetify'
 import { useOrdersStore } from '@/stores/orders'
 import {
   orderActionCapabilities,
@@ -18,11 +19,42 @@ import { orderActionErrorMessage } from '@/utils/orderErrors'
 import { bulkSummary } from '@/utils/bulkSummary'
 import StatusChip from '@/components/StatusChip.vue'
 import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
+import OrderCard from '@/components/OrderCard.vue'
 
 const store = useOrdersStore()
 const router = useRouter()
 const route = useRoute()
 const { items, pagination, filters, loading, errorCode, selectedIds } = storeToRefs(store)
+
+// Vue tableau ou cartes : même source (store), seul le rendu change. Le choix est
+// mémorisé ; sans choix enregistré, les cartes sont le défaut sur mobile (< 600 px).
+type ViewMode = 'table' | 'cards'
+const VIEW_MODE_KEY = 'assirik.helpdesk.ordersViewMode'
+const { xs } = useDisplay()
+
+function initialViewMode(): ViewMode {
+  const saved = localStorage.getItem(VIEW_MODE_KEY)
+  if (saved === 'table' || saved === 'cards') return saved
+  return xs.value ? 'cards' : 'table'
+}
+
+const viewMode = ref<ViewMode>(initialViewMode())
+watch(viewMode, (mode) => localStorage.setItem(VIEW_MODE_KEY, mode))
+
+const pageSelected = computed(
+  () => items.value.length > 0 && items.value.every((order) => selectedIds.value.includes(order.id)),
+)
+const pagePartiallySelected = computed(() => selectedIds.value.length > 0 && !pageSelected.value)
+
+function toggleSelected(orderId: string, selected: boolean) {
+  selectedIds.value = selected
+    ? [...new Set([...selectedIds.value, orderId])]
+    : selectedIds.value.filter((id) => id !== orderId)
+}
+
+function togglePageSelection(selected: boolean) {
+  selectedIds.value = selected ? items.value.map((order) => order.id) : []
+}
 
 const snackbar = ref({ show: false, text: '', color: 'neutral' })
 const pendingCancellation = ref<OrderListItem | null>(null)
@@ -107,8 +139,12 @@ function resetFilters() {
   void store.fetchList()
 }
 
+function openOrder(order: OrderListItem) {
+  void router.push({ name: 'commande-detail', params: { id: order.id } })
+}
+
 function openDetail(_event: MouseEvent, row: { item: OrderListItem }) {
-  void router.push({ name: 'commande-detail', params: { id: row.item.id } })
+  openOrder(row.item)
 }
 
 function regionLabel(order: OrderListItem) {
@@ -207,24 +243,38 @@ onMounted(() => {
 
 <template>
   <section class="orders-view">
-    <header class="d-flex align-start justify-space-between ga-4 mb-5">
+    <header class="d-flex align-start justify-space-between flex-wrap ga-4 mb-5">
       <div>
         <h1 class="text-h5 font-weight-bold mb-1">Commandes</h1>
         <p class="text-body-2 text-medium-emphasis mb-0">
           Toutes les commandes Shopify, filtrables par statut et numéro.
         </p>
       </div>
-      <v-btn
-        prepend-icon="mdi-refresh"
-        variant="outlined"
-        border="sm opacity-25"
-        rounded="lg"
-        :loading="loading"
-        size="large"
-        @click="store.fetchList"
-      >
-        <span class="text-uppercase">Actualiser</span>
-      </v-btn>
+      <div class="d-flex align-center ga-3 flex-shrink-0">
+        <v-btn-toggle
+          v-model="viewMode"
+          mandatory
+          density="comfortable"
+          variant="outlined"
+          divided
+          rounded="lg"
+          aria-label="Mode d’affichage"
+        >
+          <v-btn value="table" icon="mdi-table" aria-label="Vue tableau" />
+          <v-btn value="cards" icon="mdi-view-grid" aria-label="Vue cartes" />
+        </v-btn-toggle>
+        <v-btn
+          prepend-icon="mdi-refresh"
+          variant="outlined"
+          border="sm opacity-25"
+          rounded="lg"
+          :loading="loading"
+          size="large"
+          @click="store.fetchList"
+        >
+          <span class="text-uppercase">Actualiser</span>
+        </v-btn>
+      </div>
     </header>
 
     <v-card border flat rounded="lg" class="pa-4 mb-4">
@@ -368,7 +418,13 @@ onMounted(() => {
       <p class="text-body-2 text-medium-emphasis mb-0">Aucune commande ne correspond à ces filtres.</p>
     </v-sheet>
 
-    <v-card v-else-if="items.length" border flat rounded="lg" class="orders-table-card overflow-hidden">
+    <v-card
+      v-else-if="items.length && viewMode === 'table'"
+      border
+      flat
+      rounded="lg"
+      class="orders-table-card overflow-hidden"
+    >
       <v-data-table-server
         v-model="selectedIds"
         class="orders-table"
@@ -477,6 +533,61 @@ onMounted(() => {
       </v-data-table-server>
     </v-card>
 
+    <div v-else-if="items.length">
+      <div class="d-flex align-center ga-2 mb-3 px-1">
+        <v-checkbox-btn
+          :model-value="pageSelected"
+          :indeterminate="pagePartiallySelected"
+          density="compact"
+          class="flex-grow-0"
+          aria-label="Sélectionner toute la page"
+          @update:model-value="togglePageSelection"
+        />
+        <span class="text-body-2">Toute la page</span>
+        <v-spacer />
+        <span class="text-body-2 text-medium-emphasis">{{ pagination.total }} commande(s)</span>
+      </div>
+
+      <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-3" />
+
+      <div class="orders-cards-grid">
+        <OrderCard
+          v-for="order in items"
+          :key="order.id"
+          :order="order"
+          :capabilities="rowCapabilities(order)"
+          :selected="selectedIds.includes(order.id)"
+          :loading="store.mutatingIds.includes(order.id)"
+          @update:selected="(value) => toggleSelected(order.id, value)"
+          @open="openOrder(order)"
+          @confirm="confirmOrder(order)"
+          @remind="remindOrder(order)"
+          @cancel="pendingCancellation = order"
+        />
+      </div>
+
+      <div class="d-flex align-center justify-center flex-wrap ga-4 mt-4">
+        <v-pagination
+          v-if="pagination.pages > 1"
+          :model-value="pagination.page"
+          :length="pagination.pages"
+          :total-visible="5"
+          density="comfortable"
+          rounded="lg"
+          @update:model-value="store.setPage"
+        />
+        <v-select
+          :model-value="pagination.limit"
+          :items="[10, 20, 50]"
+          label="Par page"
+          density="compact"
+          hide-details
+          class="per-page-select"
+          @update:model-value="store.setLimit"
+        />
+      </div>
+    </div>
+
     <v-snackbar v-model="snackbar.show" :timeout="3000" :color="snackbar.color" role="status">
       {{ snackbar.text }}
     </v-snackbar>
@@ -520,6 +631,16 @@ onMounted(() => {
 
 .orders-table-card {
   min-height: 240px;
+}
+
+.orders-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.per-page-select {
+  flex: 0 0 120px;
 }
 
 .orders-table :deep(thead) {

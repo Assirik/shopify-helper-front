@@ -72,6 +72,45 @@ export function formatDateTime(value: string | number | Date | null | undefined)
   return Number.isNaN(date.getTime()) ? EM_DASH : dateTimeFormatter.format(date)
 }
 
+const relativeFormatter = new Intl.RelativeTimeFormat('fr-FR', { numeric: 'auto' })
+
+const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ['minute', 60],
+  ['hour', 60 * 60],
+  ['day', 24 * 60 * 60],
+]
+
+/**
+ * Ancienneté FR (ex : « il y a 3 heures », « hier ») jusqu'à 7 jours, puis date courte.
+ * Pensé pour les listes : la date exacte reste disponible via `formatDateTime`.
+ */
+export function formatRelativeDate(
+  value: string | number | Date | null | undefined,
+  now: number = Date.now(),
+): string {
+  if (value === null || value === undefined || value === '') return EM_DASH
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return EM_DASH
+
+  const elapsedSeconds = Math.round((now - date.getTime()) / 1000)
+  if (elapsedSeconds < 0 || elapsedSeconds > 7 * 24 * 60 * 60) return formatDate(date)
+  if (elapsedSeconds < 60) return 'à l’instant'
+
+  for (let index = RELATIVE_UNITS.length - 1; index >= 0; index -= 1) {
+    const [unit, seconds] = RELATIVE_UNITS[index]!
+    if (elapsedSeconds >= seconds) {
+      return relativeFormatter.format(-Math.floor(elapsedSeconds / seconds), unit)
+    }
+  }
+  return formatDate(date)
+}
+
+/** Numéro E.164 sans « + » pour les liens `wa.me` ; `undefined` si absent. */
+export function whatsappNumber(value: string | null | undefined): string | undefined {
+  const digits = value?.replace(/\D/g, '')
+  return digits || undefined
+}
+
 /**
  * Téléphone E.164 sénégalais lisible (ex : « +221 77 412 88 90 »).
  * Les numéros non reconnus sont renvoyés tels quels.
