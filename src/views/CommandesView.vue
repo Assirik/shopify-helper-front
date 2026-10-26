@@ -112,7 +112,8 @@ const hasActiveFilters = computed(
     operationalStatus.value !== null ||
     notificationStatus.value !== null ||
     codFilter.value !== null ||
-    showCompleted.value,
+    showCompleted.value ||
+    Boolean(filters.value.search),
 )
 
 function applyFilters() {
@@ -137,7 +138,46 @@ function resetFilters() {
   showCompleted.value = false
   store.resetFilters()
   void store.fetchList()
+  if (route.query.search) void router.replace({ query: { ...route.query, search: undefined } })
 }
+
+/**
+ * Recherche globale (barre du haut) : elle cherche partout, donc elle remplace les
+ * autres filtres et inclut les commandes terminées. Les filtres restent ensuite
+ * utilisables pour affiner.
+ */
+function applySearch(search: string) {
+  orderNameInput.value = ''
+  phoneInput.value = ''
+  confirmationStatus.value = null
+  operationalStatus.value = null
+  notificationStatus.value = null
+  codFilter.value = null
+  showCompleted.value = Boolean(search)
+  void store.applyFilters({
+    orderName: '',
+    phone: '',
+    search,
+    customerConfirmationStatus: null,
+    operationalStatus: null,
+    status: null,
+    cod: null,
+    hideCompleted: !search,
+  })
+}
+
+function clearSearch() {
+  void router.replace({ query: { ...route.query, search: undefined } })
+}
+
+// Déjà sur la page : une nouvelle recherche ne remonte pas le composant.
+watch(
+  () => route.query.search,
+  (value) => {
+    const search = typeof value === 'string' ? value.trim() : ''
+    if (search !== filters.value.search) applySearch(search)
+  },
+)
 
 function openOrder(order: OrderListItem) {
   void router.push({ name: 'commande-detail', params: { id: order.id } })
@@ -216,6 +256,12 @@ async function bulkRemindOrders() {
 }
 
 onMounted(() => {
+  const search = route.query.search
+  if (typeof search === 'string' && search.trim()) {
+    applySearch(search.trim())
+    return
+  }
+
   // Pré-remplissage depuis la navigation Clients ou Dashboard.
   const phone = route.query.phone
   const status = route.query.customerConfirmationStatus
@@ -362,6 +408,20 @@ onMounted(() => {
       </div>
     </v-card>
 
+    <div v-if="filters.search" class="d-flex align-center flex-wrap ga-2 mb-3">
+      <v-chip
+        closable
+        color="primary"
+        variant="tonal"
+        prepend-icon="mdi-magnify"
+        close-label="Effacer la recherche"
+        @click:close="clearSearch"
+      >
+        Recherche : « {{ filters.search }} »
+      </v-chip>
+      <span v-if="!filters.hideCompleted" class="text-body-2 text-medium-emphasis">Terminées incluses</span>
+    </div>
+
     <v-progress-linear v-if="loading && !items.length" indeterminate color="primary" class="mb-3" />
 
     <v-alert v-if="errorCode" type="error" variant="tonal" class="mb-4" role="alert">
@@ -415,7 +475,11 @@ onMounted(() => {
     <v-sheet v-if="!loading && !errorCode && !items.length" border rounded class="pa-10 text-center">
       <v-icon icon="mdi-cart-off" color="neutral" size="42" class="mb-3" />
       <p class="text-subtitle-1 font-weight-medium mb-1">Aucune commande</p>
-      <p class="text-body-2 text-medium-emphasis mb-0">Aucune commande ne correspond à ces filtres.</p>
+      <p v-if="filters.search" class="text-body-2 text-medium-emphasis mb-0">
+        Aucune commande ne correspond à « {{ filters.search }} ». Vérifiez l’orthographe ou cherchez un
+        numéro, un nom, un téléphone ou un article.
+      </p>
+      <p v-else class="text-body-2 text-medium-emphasis mb-0">Aucune commande ne correspond à ces filtres.</p>
     </v-sheet>
 
     <v-card

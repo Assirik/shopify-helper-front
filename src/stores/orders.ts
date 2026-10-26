@@ -19,6 +19,8 @@ import {
 export interface OrderFilters {
   orderName: string
   phone: string
+  /** Recherche unifiée lancée depuis la barre du haut. */
+  search: string
   customerConfirmationStatus: string | null
   operationalStatus: string | null
   status: string | null
@@ -30,6 +32,7 @@ export interface OrderFilters {
 const emptyFilters = (): OrderFilters => ({
   orderName: '',
   phone: '',
+  search: '',
   customerConfirmationStatus: null,
   operationalStatus: null,
   status: null,
@@ -89,6 +92,7 @@ export const useOrdersStore = defineStore('orders', () => {
     }
     if (filters.orderName.trim()) params.orderName = filters.orderName.trim()
     if (filters.phone.trim()) params.phone = filters.phone.trim()
+    if (filters.search.trim()) params.search = filters.search.trim()
     if (filters.customerConfirmationStatus) params.customerConfirmationStatus = filters.customerConfirmationStatus
     if (filters.operationalStatus) params.operationalStatus = filters.operationalStatus
     if (filters.status) params.status = filters.status
