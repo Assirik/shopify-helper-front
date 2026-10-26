@@ -6,6 +6,7 @@ import { useDisplay } from 'vuetify'
 import { useOrdersStore } from '@/stores/orders'
 import {
   orderActionCapabilities,
+  type AdminConfirmationSource,
   type OrderActionCapabilities,
   type OrderListItem,
 } from '@/types/orders'
@@ -19,6 +20,7 @@ import { orderActionErrorMessage } from '@/utils/orderErrors'
 import { bulkSummary } from '@/utils/bulkSummary'
 import StatusChip from '@/components/StatusChip.vue'
 import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
+import ConfirmOrderDialog from '@/components/ConfirmOrderDialog.vue'
 import OrderCard from '@/components/OrderCard.vue'
 
 const store = useOrdersStore()
@@ -58,6 +60,8 @@ function togglePageSelection(selected: boolean) {
 
 const snackbar = ref({ show: false, text: '', color: 'neutral' })
 const pendingCancellation = ref<OrderListItem | null>(null)
+// Confirmation unitaire : même dialogue que la fiche (source appel / autre).
+const pendingConfirmation = ref<OrderListItem | null>(null)
 
 // Filtres locaux (appliqués au store via applyFilters). Initialisés depuis le store :
 // au retour du détail, les champs reflètent les filtres toujours appliqués à la liste.
@@ -196,9 +200,20 @@ const cancellationSubmitting = computed(() =>
   pendingCancellation.value ? store.mutatingIds.includes(pendingCancellation.value.id) : false,
 )
 
-async function confirmOrder(order: OrderListItem) {
+const confirmationSubmitting = computed(() =>
+  pendingConfirmation.value ? store.mutatingIds.includes(pendingConfirmation.value.id) : false,
+)
+
+function confirmOrder(order: OrderListItem) {
+  pendingConfirmation.value = order
+}
+
+async function submitConfirmation(source: AdminConfirmationSource) {
+  const order = pendingConfirmation.value
+  if (!order) return
   try {
-    await store.confirm(order.id)
+    await store.confirm(order.id, source)
+    pendingConfirmation.value = null
     snackbar.value = { show: true, text: `${order.shopifyOrderName} confirmée.`, color: 'success' }
   } catch (cause) {
     snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
@@ -663,6 +678,14 @@ onMounted(() => {
       :submitting="cancellationSubmitting"
       @update:model-value="(value) => { if (!value) pendingCancellation = null }"
       @confirm="submitCancellation"
+    />
+
+    <ConfirmOrderDialog
+      :model-value="Boolean(pendingConfirmation)"
+      :order-name="pendingConfirmation?.shopifyOrderName"
+      :submitting="confirmationSubmitting"
+      @update:model-value="(value) => { if (!value) pendingConfirmation = null }"
+      @confirm="submitConfirmation"
     />
   </section>
 </template>
