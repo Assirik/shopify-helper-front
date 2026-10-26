@@ -4,6 +4,7 @@ import { ordersService, type OrderListParams } from '@/services/orders.service'
 import { toApiFailure } from '@/services/errors'
 import {
   orderActionCapabilities,
+  type AdminConfirmationSource,
   type BulkOrderResult,
   type DeliverOrderPayload,
   type DispatchOrderPayload,
@@ -191,7 +192,11 @@ export const useOrdersStore = defineStore('orders', () => {
     }
   }
 
-  const confirm = (orderId: string) => runUnitAction(orderId, () => ordersService.confirm(orderId))
+  const confirm = (orderId: string, source?: AdminConfirmationSource) =>
+    runUnitAction(orderId, () => ordersService.confirm(orderId, source))
+  const addNote = (orderId: string, text: string) => runUnitAction(orderId, () => ordersService.addNote(orderId, text))
+  const markUnreachable = (orderId: string, note?: string) =>
+    runUnitAction(orderId, () => ordersService.markUnreachable(orderId, note))
   const remind = (orderId: string) => runUnitAction(orderId, () => ordersService.remind(orderId))
   const cancel = (orderId: string, reason: string) =>
     runUnitAction(orderId, () => ordersService.cancel(orderId, reason))
@@ -248,6 +253,8 @@ export const useOrdersStore = defineStore('orders', () => {
     setLimit,
     fetchDetail,
     confirm,
+    addNote,
+    markUnreachable,
     remind,
     cancel,
     dispatch,

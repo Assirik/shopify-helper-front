@@ -33,6 +33,10 @@ const ORDER_ACTION_MESSAGES: Record<string, string> = {
   InvalidCourierFee: 'La rémunération livreur est invalide (ou supérieure à l’encaissé).',
   InvalidCarrierFee: 'Le coût transporteur est invalide (ou supérieur à l’encaissé).',
   InvalidReconciliationDate: 'Date de rapprochement invalide.',
+  InvalidConfirmationSource: 'Source de confirmation invalide.',
+  OrderUnreachableNotAllowed: 'Seule une commande en attente de confirmation peut être marquée injoignable.',
+  NoteTextRequired: 'La note est vide.',
+  NoteTextTooLong: 'La note est trop longue (5 000 caractères maximum).',
 }
 
 /** Message FR lisible pour une erreur d'action commande (confirm/remind/cancel). */
