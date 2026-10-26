@@ -21,6 +21,8 @@ export interface OrderListParams {
   cod?: boolean
   /** Exclut les commandes terminées (livrées ET intégralement encaissées). */
   hideCompleted?: boolean
+  /** Exclut les commandes annulées, sauf si un statut de confirmation est filtré. */
+  hideCancelled?: boolean
 }
 
 export const ordersService = {
