@@ -16,7 +16,7 @@ import { ORDER_STAGE_STEPS, orderStage } from '@/utils/orderStage'
  * la sélection et les actions remontent à la vue, qui les relaie au store.
  *
  * Lecture en trois temps : qui / combien, où en est la commande (piste du parcours COD),
- * puis la prochaine action. Une seule action principale ; le reste passe par le menu.
+ * puis les actions possibles, en bas de carte sous la zone de livraison.
  */
 const props = defineProps<{
   order: OrderListItem
@@ -37,17 +37,9 @@ const stage = computed(() => orderStage(props.order))
 const region = computed(() => props.order.deliveryRegion?.trim() || props.order.shippingRegion?.trim() || undefined)
 const whatsapp = computed(() => whatsappNumber(props.order.customerPhoneE164))
 
-// Action principale = prochaine étape du parcours : confirmer, sinon relancer.
-const primaryAction = computed(() => {
-  if (props.capabilities.canConfirm) {
-    return { label: 'Confirmer', icon: 'mdi-check', color: 'success', event: 'confirm' as const }
-  }
-  if (props.capabilities.canRemind) {
-    return { label: 'Relancer', icon: 'mdi-bell-ring-outline', color: 'primary', event: 'remind' as const }
-  }
-  return null
-})
-const canRemindFromMenu = computed(() => props.capabilities.canRemind && primaryAction.value?.event !== 'remind')
+const hasActions = computed(
+  () => props.capabilities.canConfirm || props.capabilities.canRemind || props.capabilities.canCancel,
+)
 
 const stageAriaLabel = computed(
   () => `${stage.value.label} — ${stage.value.completed} étape(s) sur ${ORDER_STAGE_STEPS.length} franchie(s)`,
@@ -57,11 +49,6 @@ function segmentState(index: number) {
   if (index < stage.value.completed) return 'done'
   if (index === stage.value.completed && !stage.value.closed) return 'current'
   return 'todo'
-}
-
-function runPrimaryAction() {
-  if (primaryAction.value?.event === 'confirm') emit('confirm')
-  else if (primaryAction.value?.event === 'remind') emit('remind')
 }
 </script>
 
@@ -94,40 +81,6 @@ function runPrimaryAction() {
       >
         {{ formatRelativeDate(order.createdAt) }}
       </time>
-      <v-menu location="bottom end">
-        <template #activator="{ props: menuProps }">
-          <v-btn
-            v-bind="menuProps"
-            icon="mdi-dots-vertical"
-            variant="text"
-            size="small"
-            density="comfortable"
-            class="order-card__menu"
-            :aria-label="`Plus d’actions pour ${order.shopifyOrderName}`"
-            @click.stop
-          />
-        </template>
-        <v-list density="compact" min-width="200">
-          <v-list-item prepend-icon="mdi-open-in-app" title="Ouvrir la commande" @click="emit('open')" />
-          <v-list-item
-            v-if="canRemindFromMenu"
-            prepend-icon="mdi-bell-ring-outline"
-            title="Relancer le client"
-            :disabled="loading"
-            @click="emit('remind')"
-          />
-          <template v-if="capabilities.canCancel">
-            <v-divider class="my-1" />
-            <v-list-item
-              prepend-icon="mdi-close-circle-outline"
-              title="Annuler la commande"
-              base-color="error"
-              :disabled="loading"
-              @click="emit('cancel')"
-            />
-          </template>
-        </v-list>
-      </v-menu>
     </header>
 
     <div class="order-card__body">
@@ -189,19 +142,47 @@ function runPrimaryAction() {
         <v-icon icon="mdi-map-marker-outline" size="16" />
         <span class="text-truncate">{{ region ?? 'Zone non renseignée' }}</span>
       </span>
-      <v-btn
-        v-if="primaryAction"
-        :color="primaryAction.color"
-        variant="tonal"
-        size="small"
-        rounded="lg"
-        class="order-card__primary"
-        :prepend-icon="primaryAction.icon"
-        :loading="loading"
-        @click.stop="runPrimaryAction"
-      >
-        {{ primaryAction.label }}
-      </v-btn>
+      <div v-if="hasActions" class="order-card__actions" @click.stop>
+        <v-btn
+          v-if="capabilities.canConfirm"
+          color="success"
+          variant="tonal"
+          size="small"
+          rounded="lg"
+          prepend-icon="mdi-check"
+          class="order-card__action px-1"
+          :loading="loading"
+          @click="emit('confirm')"
+        >
+          Confirmer
+        </v-btn>
+        <v-btn
+          v-if="capabilities.canRemind"
+          color="primary"
+          :variant="capabilities.canConfirm ? 'text' : 'tonal'"
+          size="small"
+          rounded="lg"
+          prepend-icon="mdi-bell-ring-outline"
+          class="order-card__action px-1"
+          :loading="loading"
+          @click="emit('remind')"
+        >
+          Relancer
+        </v-btn>
+        <v-btn
+          v-if="capabilities.canCancel"
+          color="error"
+          variant="text"
+          size="small"
+          rounded="lg"
+          prepend-icon="mdi-close"
+          class="order-card__action order-card__action--cancel"
+          :disabled="loading"
+          @click="emit('cancel')"
+        >
+          Annuler
+        </v-btn>
+      </div>
     </footer>
   </article>
 </template>
@@ -259,10 +240,6 @@ function runPrimaryAction() {
   font-size: 0.8125rem;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   white-space: nowrap;
-}
-
-.order-card__menu {
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
 }
 
 /* Corps : qui à gauche, combien à droite. */
@@ -371,13 +348,11 @@ function runPrimaryAction() {
   overflow: hidden;
 }
 
-/* Pied : zone de livraison et action principale, toujours en bas de la carte. */
+/* Pied : zone de livraison puis actions, toujours en bas de la carte. */
 .order-card__foot {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 32px;
+  flex-direction: column;
+  gap: 10px;
   margin-top: auto;
 }
 
@@ -390,11 +365,24 @@ function runPrimaryAction() {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
 }
 
-.order-card__primary {
-  flex: 0 0 auto;
+.order-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.order-card__action {
   text-transform: none;
   letter-spacing: 0;
   font-weight: 600;
+}
+
+/* Annuler, destructive, est tenue à l'écart des actions qui font avancer la commande. */
+.order-card__action--cancel {
+  margin-left: auto;
 }
 
 /* Carte étroite (mobile, grille dense) : le montant passe sous le client. */
