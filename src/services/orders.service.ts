@@ -1,5 +1,6 @@
 import api from '@/services/api'
 import type {
+  AdminConfirmationSource,
   BulkOrderResult,
   DeliverOrderPayload,
   DispatchOrderPayload,
@@ -36,8 +37,18 @@ export const ordersService = {
     return data
   },
 
-  async confirm(orderId: string) {
-    const { data } = await api.post(`/orders/${orderId}/confirm`)
+  async confirm(orderId: string, source?: AdminConfirmationSource) {
+    const { data } = await api.post(`/orders/${orderId}/confirm`, source ? { source } : undefined)
+    return data
+  },
+
+  async addNote(orderId: string, text: string) {
+    const { data } = await api.post(`/orders/${orderId}/notes`, { text })
+    return data
+  },
+
+  async markUnreachable(orderId: string, note?: string) {
+    const { data } = await api.post(`/orders/${orderId}/mark-unreachable`, note ? { note } : undefined)
     return data
   },
 

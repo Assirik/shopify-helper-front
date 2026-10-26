@@ -34,6 +34,7 @@ const reasons: Record<AttentionReason, { label: string; color: string }> = {
   sms_only: { label: 'SMS seul', color: 'info' },
   invalid_number: { label: 'Numéro invalide', color: 'error' },
   late_confirm: { label: 'Confirmation tardive', color: 'warning' },
+  unreachable: { label: 'Injoignable', color: 'primary' },
 }
 
 const amountFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 })
@@ -124,6 +125,7 @@ const filters: Array<{ key: AttentionFilter; label: string; color?: string, bord
   { key: 'sms_only', label: 'SMS seul', color: 'info' },
   { key: 'invalid_number', label: 'Numéro invalide', color: 'error' },
   { key: 'late_confirm', label: 'Confirmation tardive', color: 'warning' },
+  { key: 'unreachable', label: 'Injoignable', color: 'primary' },
 ]
 
 const filterCount = (filter: AttentionFilter) => counts.value[filter]

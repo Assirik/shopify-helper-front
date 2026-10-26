@@ -140,6 +140,7 @@ export type OrderEventType =
   | 'delivery_failed'
   | 'returned'
   | 'payment_recorded'
+  | 'note'
 
 /** Événement d'audit d'une transition de commande (`GET /orders/:id` → `events`). */
 export interface OrderEvent {
@@ -189,7 +190,12 @@ export interface OrderActionCapabilities {
   canDeliver: boolean
   canMarkFailed: boolean
   canReturn: boolean
+  /** Appel sans réponse : remet la commande en file « À traiter » (Lot 0 · F15). */
+  canMarkUnreachable: boolean
 }
+
+/** Source de confirmation déclarée par un agent (`POST /orders/:id/confirm`). */
+export type AdminConfirmationSource = 'admin' | 'phone_call'
 
 /**
  * Payload d'expédition d'une commande (`POST /orders/:id/dispatch`).
@@ -255,11 +261,23 @@ export function orderActionCapabilities(
     case 'needs_attention':
     case 'sms_only':
     case 'expired':
-      return { canConfirm: true, canRemind: true, canCancel: !operationalLocked, ...operational }
+      return {
+        canConfirm: true,
+        canRemind: true,
+        canCancel: !operationalLocked,
+        canMarkUnreachable: true,
+        ...operational,
+      }
     case 'confirmed':
-      return { canConfirm: false, canRemind: false, canCancel: !operationalLocked, ...operational }
+      return {
+        canConfirm: false,
+        canRemind: false,
+        canCancel: !operationalLocked,
+        canMarkUnreachable: false,
+        ...operational,
+      }
     case 'cancelled':
     default:
-      return { canConfirm: false, canRemind: false, canCancel: false, ...operational }
+      return { canConfirm: false, canRemind: false, canCancel: false, canMarkUnreachable: false, ...operational }
   }
 }

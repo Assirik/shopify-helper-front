@@ -7,6 +7,7 @@ import { useCouriersStore } from '@/stores/couriers'
 import { useCarriersStore } from '@/stores/carriers'
 import {
   orderActionCapabilities,
+  type AdminConfirmationSource,
   type DeliverOrderPayload,
   type DispatchOrderPayload,
   type OrderMessage,
@@ -14,6 +15,7 @@ import {
 import {
   channelMeta,
   codPaymentStatusMeta,
+  confirmationSourceMeta,
   customerConfirmationStatusMeta,
   deliveryChannelMeta,
   lookupMeta,
@@ -31,6 +33,7 @@ import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
 import DispatchOrderDialog from '@/components/DispatchOrderDialog.vue'
 import DeliverOrderDialog from '@/components/DeliverOrderDialog.vue'
 import OrderReasonDialog from '@/components/OrderReasonDialog.vue'
+import ConfirmOrderDialog from '@/components/ConfirmOrderDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -49,6 +52,10 @@ const dispatchOpen = ref(false)
 const deliverOpen = ref(false)
 const failureOpen = ref(false)
 const returnOpen = ref(false)
+const confirmOpen = ref(false)
+const unreachableOpen = ref(false)
+const noteText = ref('')
+const NOTE_MAX_LENGTH = 5000
 const retryingIds = ref<string[]>([])
 
 // Capabilities : l'API fait foi ; repli local tant que la réponse ne les porte pas.
@@ -65,6 +72,7 @@ const capabilities = computed(() => {
     canDeliver: false,
     canMarkFailed: false,
     canReturn: false,
+    canMarkUnreachable: false,
   }
 })
 const actionLoading = computed(() => (detail.value ? store.mutatingIds.includes(detail.value.id) : false))
@@ -115,11 +123,39 @@ function goToOrder(id: string | undefined) {
   if (id) void router.push({ name: 'commande-detail', params: { id } })
 }
 
-async function confirmOrder() {
+async function submitConfirmation(source: AdminConfirmationSource) {
   if (!detail.value) return
   try {
-    await store.confirm(detail.value.id)
+    await store.confirm(detail.value.id, source)
+    confirmOpen.value = false
     snackbar.value = { show: true, text: 'Commande confirmée.', color: 'success' }
+  } catch (cause) {
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
+async function submitUnreachable(note: string) {
+  if (!detail.value) return
+  try {
+    await store.markUnreachable(detail.value.id, note)
+    unreachableOpen.value = false
+    snackbar.value = { show: true, text: 'Commande marquée injoignable : elle est dans « À traiter ».', color: 'info' }
+  } catch (cause) {
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
+const trimmedNote = computed(() => noteText.value.trim())
+const canAddNote = computed(
+  () => Boolean(trimmedNote.value) && trimmedNote.value.length <= NOTE_MAX_LENGTH && !actionLoading.value,
+)
+
+async function submitNote() {
+  if (!detail.value || !canAddNote.value) return
+  try {
+    await store.addNote(detail.value.id, trimmedNote.value)
+    noteText.value = ''
+    snackbar.value = { show: true, text: 'Note ajoutée.', color: 'success' }
   } catch (cause) {
     snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
@@ -332,6 +368,16 @@ onMounted(() => {
             Marquer livrée
           </v-btn>
           <v-btn
+            v-if="capabilities.canMarkUnreachable"
+            variant="outlined"
+            border="sm opacity-25"
+            prepend-icon="mdi-phone-off-outline"
+            :loading="actionLoading"
+            @click="unreachableOpen = true"
+          >
+            Injoignable
+          </v-btn>
+          <v-btn
             v-if="capabilities.canRemind"
             variant="outlined"
             border="sm opacity-25"
@@ -356,7 +402,7 @@ onMounted(() => {
             color="success"
             prepend-icon="mdi-check"
             :loading="actionLoading"
-            @click="confirmOrder"
+            @click="confirmOpen = true"
           >
             Confirmer
           </v-btn>
@@ -502,7 +548,10 @@ onMounted(() => {
             <v-card-text>
               <StatusChip :table="customerConfirmationStatusMeta" :value="detail.customerConfirmationStatus" size="default" class="mb-3" />
               <dl class="info-grid">
-                <div><dt>Source</dt><dd>{{ formatNullable(detail.confirmationSource) }}</dd></div>
+                <div>
+                  <dt>Source</dt>
+                  <dd>{{ detail.confirmationSource ? lookupMeta(confirmationSourceMeta, detail.confirmationSource).label : formatNullable(null) }}</dd>
+                </div>
                 <div><dt>Date décision</dt><dd>{{ formatDateTime(detail.confirmedAt ?? detail.confirmationCancelledAt) }}</dd></div>
                 <div><dt>Relances</dt><dd>{{ formatNullable(detail.reminderCount ?? 0) }}</dd></div>
                 <div><dt>Dernière relance</dt><dd>{{ formatDateTime(detail.lastReminderAt) }}</dd></div>
@@ -574,6 +623,41 @@ onMounted(() => {
               </div>
               <div v-if="detail.collectedAt" class="text-caption text-medium-emphasis mt-2">
                 Encaissé le {{ formatDateTime(detail.collectedAt) }}
+              </div>
+            </v-card-text>
+          </v-card>
+
+          <!-- Notes libres (F16) : ajoutées à l'historique avec auteur et date. -->
+          <v-card border flat rounded="lg">
+            <v-card-title class="d-flex align-center ga-2 text-subtitle-1 font-weight-bold">
+              <v-icon icon="mdi-note-text-outline" color="primary" size="20" /> Ajouter une note
+            </v-card-title>
+            <v-card-text>
+              <v-textarea
+                v-model="noteText"
+                placeholder="Ex. : livrer chez son frère, rappeler après 18 h, nouvelle adresse…"
+                rows="2"
+                auto-grow
+                hide-details="auto"
+                counter
+                :counter-value="(value: string) => (value ?? '').trim().length"
+                :maxlength="NOTE_MAX_LENGTH"
+                aria-label="Note sur la commande"
+                @keydown.ctrl.enter="submitNote"
+                @keydown.meta.enter="submitNote"
+              />
+              <div class="d-flex align-center justify-space-between ga-3 mt-3">
+                <span class="text-caption text-medium-emphasis">Visible dans l’historique, avec votre nom et la date.</span>
+                <v-btn
+                  color="primary"
+                  variant="tonal"
+                  prepend-icon="mdi-plus"
+                  :disabled="!canAddNote"
+                  :loading="actionLoading && Boolean(trimmedNote)"
+                  @click="submitNote"
+                >
+                  Ajouter
+                </v-btn>
               </div>
             </v-card-text>
           </v-card>
@@ -750,6 +834,26 @@ onMounted(() => {
       :reasons="['Client injoignable', 'Adresse introuvable', 'Client absent', 'Refus à la livraison', 'Autre']"
       :submitting="actionLoading"
       @confirm="submitFailure"
+    />
+
+    <ConfirmOrderDialog
+      v-model="confirmOpen"
+      :order-name="detail?.shopifyOrderName"
+      :submitting="actionLoading"
+      @confirm="submitConfirmation"
+    />
+
+    <OrderReasonDialog
+      v-model="unreachableOpen"
+      title="Client injoignable —"
+      :order-name="detail?.shopifyOrderName"
+      label="Ce qui s’est passé"
+      icon="mdi-phone-off-outline"
+      color="primary"
+      confirm-text="Marquer injoignable"
+      :reasons="['Ne répond pas', 'Messagerie', 'Numéro éteint', 'Ligne occupée']"
+      :submitting="actionLoading"
+      @confirm="submitUnreachable"
     />
 
     <OrderReasonDialog

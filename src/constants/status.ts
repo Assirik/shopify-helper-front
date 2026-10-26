@@ -115,6 +115,14 @@ export const orderEventTypeMeta: Record<string, StatusMeta> = {
   delivery_failed: { label: 'Échec de livraison', color: 'error', icon: 'mdi-alert-circle-outline' },
   returned: { label: 'Retour', color: 'neutral', icon: 'mdi-keyboard-return' },
   payment_recorded: { label: 'Encaissement enregistré', color: 'primary', icon: 'mdi-cash-register' },
+  note: { label: 'Note', color: 'neutral', icon: 'mdi-note-text-outline' },
+}
+
+/** Source d'une confirmation (`confirmationSource`). */
+export const confirmationSourceMeta: Record<string, StatusMeta> = {
+  whatsapp_button: { label: 'Bouton WhatsApp', color: 'success', icon: 'mdi-whatsapp' },
+  phone_call: { label: 'Appel téléphonique', color: 'primary', icon: 'mdi-phone-outline' },
+  admin: { label: 'Agent (sans appel)', color: 'neutral', icon: 'mdi-account-check-outline' },
 }
 
 /** Rôle d'un utilisateur du helpdesk. */
