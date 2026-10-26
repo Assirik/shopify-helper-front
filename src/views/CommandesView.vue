@@ -70,6 +70,9 @@ const codFilter = ref<boolean | null>(filters.value.cod)
 // Désencombrement : les commandes terminées (livrées ET payées) sont masquées par
 // défaut. Le switch les fait réapparaître sans rien supprimer.
 const showCompleted = ref(!filters.value.hideCompleted)
+// Même principe pour les annulées. Filtrer explicitement sur « Annulée » les affiche
+// quand même : le backend ignore alors le masquage.
+const showCancelled = ref(!filters.value.hideCancelled)
 
 const confirmationOptions = Object.entries(customerConfirmationStatusMeta).map(([value, meta]) => ({
   value,
@@ -114,6 +117,7 @@ const hasActiveFilters = computed(
     notificationStatus.value !== null ||
     codFilter.value !== null ||
     showCompleted.value ||
+    showCancelled.value ||
     Boolean(filters.value.search),
 )
 
@@ -126,6 +130,7 @@ function applyFilters() {
     status: notificationStatus.value,
     cod: codFilter.value,
     hideCompleted: !showCompleted.value,
+    hideCancelled: !showCancelled.value,
   })
 }
 
@@ -137,6 +142,7 @@ function resetFilters() {
   notificationStatus.value = null
   codFilter.value = null
   showCompleted.value = false
+  showCancelled.value = false
   store.resetFilters()
   void store.fetchList()
   if (route.query.search) void router.replace({ query: { ...route.query, search: undefined } })
@@ -144,8 +150,8 @@ function resetFilters() {
 
 /**
  * Recherche globale (barre du haut) : elle cherche partout, donc elle remplace les
- * autres filtres et inclut les commandes terminées. Les filtres restent ensuite
- * utilisables pour affiner.
+ * autres filtres et inclut les commandes terminées et annulées. Les filtres restent
+ * ensuite utilisables pour affiner.
  */
 function applySearch(search: string) {
   orderNameInput.value = ''
@@ -155,6 +161,7 @@ function applySearch(search: string) {
   notificationStatus.value = null
   codFilter.value = null
   showCompleted.value = Boolean(search)
+  showCancelled.value = Boolean(search)
   void store.applyFilters({
     orderName: '',
     phone: '',
@@ -164,8 +171,19 @@ function applySearch(search: string) {
     status: null,
     cod: null,
     hideCompleted: !search,
+    hideCancelled: !search,
   })
 }
+
+// Rappel, à côté de la recherche active, des commandes habituellement masquées qu'elle inclut.
+const includedInSearch = computed(() => {
+  const completed = !filters.value.hideCompleted
+  const cancelled = !filters.value.hideCancelled
+  if (completed && cancelled) return 'Terminées et annulées incluses'
+  if (completed) return 'Terminées incluses'
+  if (cancelled) return 'Annulées incluses'
+  return ''
+})
 
 function clearSearch() {
   void router.replace({ query: { ...route.query, search: undefined } })
@@ -405,6 +423,22 @@ onMounted(() => {
               </span>
             </template>
           </v-switch>
+          <v-switch
+            v-model="showCancelled"
+            color="primary"
+            density="compact"
+            hide-details
+            inset
+            class="show-completed-switch ms-4"
+            @update:model-value="applyFilters"
+          >
+            <template #label>
+              <span class="d-inline-flex align-center ga-1 text-body-2">
+                <v-icon icon="mdi-close-circle-outline" size="16" />
+                Afficher les annulées
+              </span>
+            </template>
+          </v-switch>
         </div>
       </div>
     </v-card>
@@ -420,7 +454,7 @@ onMounted(() => {
       >
         Recherche : « {{ filters.search }} »
       </v-chip>
-      <span v-if="!filters.hideCompleted" class="text-body-2 text-medium-emphasis">Terminées incluses</span>
+      <span v-if="includedInSearch" class="text-body-2 text-medium-emphasis">{{ includedInSearch }}</span>
     </div>
 
     <v-progress-linear v-if="loading && !items.length" indeterminate color="primary" class="mb-3" />

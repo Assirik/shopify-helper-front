@@ -27,6 +27,8 @@ export interface OrderFilters {
   cod: boolean | null
   /** Masque les commandes terminées (livrées ET payées) — activé par défaut. */
   hideCompleted: boolean
+  /** Masque les commandes annulées — activé par défaut. */
+  hideCancelled: boolean
 }
 
 const emptyFilters = (): OrderFilters => ({
@@ -38,6 +40,7 @@ const emptyFilters = (): OrderFilters => ({
   status: null,
   cod: null,
   hideCompleted: true,
+  hideCancelled: true,
 })
 
 /** Capabilities d'une ligne : API si présente, sinon repli local. */
@@ -108,6 +111,7 @@ export const useOrdersStore = defineStore('orders', () => {
     if (filters.status) params.status = filters.status
     if (filters.cod !== null) params.cod = filters.cod
     if (filters.hideCompleted) params.hideCompleted = true
+    if (filters.hideCancelled) params.hideCancelled = true
     return params
   }
 
