@@ -79,6 +79,16 @@ export const useOrdersStore = defineStore('orders', () => {
       .map(o => o.id),
   )
 
+  // Navigation préc/suiv depuis le détail : voisins dans la page courante de la liste
+  // (ordre et filtres du serveur). Pas de passage à la page suivante en v1.
+  const isInList = (orderId: string) => items.value.some(o => o.id === orderId)
+  const neighborId = (orderId: string, offset: -1 | 1) => {
+    const index = items.value.findIndex(o => o.id === orderId)
+    return index === -1 ? undefined : items.value[index + offset]?.id
+  }
+  const prevId = (orderId: string) => neighborId(orderId, -1)
+  const nextId = (orderId: string) => neighborId(orderId, 1)
+
   function setMutating(orderIds: string[], active: boolean) {
     const next = new Set(mutatingIds.value)
     orderIds.forEach(id => (active ? next.add(id) : next.delete(id)))
@@ -228,6 +238,9 @@ export const useOrdersStore = defineStore('orders', () => {
     selectedOrders,
     selectedConfirmableIds,
     selectedRemindableIds,
+    isInList,
+    prevId,
+    nextId,
     fetchList,
     applyFilters,
     resetFilters,

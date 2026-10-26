@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useOrdersStore } from '@/stores/orders'
@@ -105,6 +105,16 @@ function goBack() {
   void router.push({ name: 'commandes' })
 }
 
+// Préc/suiv dans l'ordre de la liste filtrée. Accès direct par URL ou commande absente
+// de la page courante : on masque la navigation plutôt que d'afficher des boutons inertes.
+const showNeighborNav = computed(() => store.isInList(orderId.value))
+const previousOrderId = computed(() => store.prevId(orderId.value))
+const nextOrderId = computed(() => store.nextId(orderId.value))
+
+function goToOrder(id: string | undefined) {
+  if (id) void router.push({ name: 'commande-detail', params: { id } })
+}
+
 async function confirmOrder() {
   if (!detail.value) return
   try {
@@ -193,8 +203,18 @@ async function retryMessage(message: OrderMessage) {
   }
 }
 
+// La route réutilise le composant d'une commande à l'autre (préc/suiv) : on recharge
+// le détail à chaque changement d'id, pas seulement au montage. En quittant la page,
+// l'id disparaît de la route avant le démontage : rien à charger.
+watch(
+  () => route.params.id,
+  (id) => {
+    if (typeof id === 'string' && id) void store.fetchDetail(id)
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
-  void store.fetchDetail(orderId.value)
   // Résolution des noms livreur/transporteur (l'API ne renvoie que les ids).
   void couriersStore.ensureLoaded()
   void carriersStore.ensureLoaded()
@@ -203,15 +223,36 @@ onMounted(() => {
 
 <template>
   <section class="order-detail">
-    <v-btn
-      variant="text"
-      size="small"
-      prepend-icon="mdi-arrow-left"
-      class="mb-3"
-      @click="goBack"
-    >
-      Commandes
-    </v-btn>
+    <div class="d-flex align-center justify-space-between ga-2 mb-3">
+      <v-btn
+        variant="text"
+        size="small"
+        prepend-icon="mdi-arrow-left"
+        @click="goBack"
+      >
+        Commandes
+      </v-btn>
+      <div v-if="showNeighborNav" class="d-flex align-center ga-1">
+        <v-btn
+          variant="text"
+          size="small"
+          prepend-icon="mdi-chevron-left"
+          :disabled="!previousOrderId || detailLoading"
+          @click="goToOrder(previousOrderId)"
+        >
+          Précédente
+        </v-btn>
+        <v-btn
+          variant="text"
+          size="small"
+          append-icon="mdi-chevron-right"
+          :disabled="!nextOrderId || detailLoading"
+          @click="goToOrder(nextOrderId)"
+        >
+          Suivante
+        </v-btn>
+      </div>
+    </div>
 
     <v-progress-linear v-if="detailLoading && !detail" indeterminate color="primary" class="mb-4" />
 

@@ -59,16 +59,17 @@ function togglePageSelection(selected: boolean) {
 const snackbar = ref({ show: false, text: '', color: 'neutral' })
 const pendingCancellation = ref<OrderListItem | null>(null)
 
-// Filtres locaux (appliqués au store via applyFilters).
-const orderNameInput = ref('')
-const phoneInput = ref('')
-const confirmationStatus = ref<string | null>(null)
-const operationalStatus = ref<string | null>(null)
-const notificationStatus = ref<string | null>(null)
-const codFilter = ref<boolean | null>(null)
+// Filtres locaux (appliqués au store via applyFilters). Initialisés depuis le store :
+// au retour du détail, les champs reflètent les filtres toujours appliqués à la liste.
+const orderNameInput = ref(filters.value.orderName)
+const phoneInput = ref(filters.value.phone)
+const confirmationStatus = ref<string | null>(filters.value.customerConfirmationStatus)
+const operationalStatus = ref<string | null>(filters.value.operationalStatus)
+const notificationStatus = ref<string | null>(filters.value.status)
+const codFilter = ref<boolean | null>(filters.value.cod)
 // Désencombrement : les commandes terminées (livrées ET payées) sont masquées par
 // défaut. Le switch les fait réapparaître sans rien supprimer.
-const showCompleted = ref(false)
+const showCompleted = ref(!filters.value.hideCompleted)
 
 const confirmationOptions = Object.entries(customerConfirmationStatusMeta).map(([value, meta]) => ({
   value,
