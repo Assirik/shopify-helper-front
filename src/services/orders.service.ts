@@ -16,6 +16,8 @@ export interface OrderListParams {
   operationalStatus?: string
   orderName?: string
   phone?: string
+  /** Recherche unifiée : n°, client, téléphone, email, tags, article (titre/SKU). */
+  search?: string
   cod?: boolean
   /** Exclut les commandes terminées (livrées ET intégralement encaissées). */
   hideCompleted?: boolean
