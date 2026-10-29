@@ -99,6 +99,22 @@ export const codPaymentStatusMeta: Record<string, StatusMeta> = {
   unpaid: { label: 'Non encaissé', color: 'error', icon: 'mdi-cash-remove' },
 }
 
+/** Statut de l'envoi de la conversion à Meta (`capiPurchaseStatus`). */
+export const capiPurchaseStatusMeta: Record<string, StatusMeta> = {
+  sent: { label: 'Envoyée', color: 'success', icon: 'mdi-check' },
+  pending: { label: 'En attente', color: 'warning', icon: 'mdi-clock-outline' },
+  failed: { label: 'Échec', color: 'error', icon: 'mdi-alert-circle-outline' },
+  skipped: { label: 'Ignorée', color: 'neutral', icon: 'mdi-debug-step-over' },
+}
+
+/** Motif d'une conversion ignorée (métadonnée `reason` de l'événement `capi_purchase_skipped`). */
+export const capiSkipReasonMeta: Record<string, StatusMeta> = {
+  test: { label: 'Commande de test', color: 'neutral' },
+  cancelled: { label: 'Commande annulée', color: 'neutral' },
+  disabled: { label: 'Envoi à Meta désactivé', color: 'neutral' },
+  too_old: { label: 'Commande trop ancienne (plus de 7 jours)', color: 'neutral' },
+}
+
 /** Canal de livraison (`deliveryChannel`). */
 export const deliveryChannelMeta: Record<string, StatusMeta> = {
   internal: { label: 'Livreur interne', color: 'primary', icon: 'mdi-moped-outline' },
@@ -116,6 +132,10 @@ export const orderEventTypeMeta: Record<string, StatusMeta> = {
   returned: { label: 'Retour', color: 'neutral', icon: 'mdi-keyboard-return' },
   payment_recorded: { label: 'Encaissement enregistré', color: 'primary', icon: 'mdi-cash-register' },
   note: { label: 'Note', color: 'neutral', icon: 'mdi-note-text-outline' },
+  capi_purchase_sent: { label: 'Conversion Meta envoyée', color: 'success', icon: 'mdi-send-check-outline' },
+  capi_purchase_failed: { label: 'Conversion Meta en échec', color: 'error', icon: 'mdi-alert-circle-outline' },
+  capi_purchase_skipped: { label: 'Conversion Meta ignorée', color: 'neutral', icon: 'mdi-debug-step-over' },
+  phone_mismatch: { label: 'Numéro WhatsApp différent', color: 'warning', icon: 'mdi-phone-alert-outline' },
 }
 
 /** Source d'une confirmation (`confirmationSource`). */

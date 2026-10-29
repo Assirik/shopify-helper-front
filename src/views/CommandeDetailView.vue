@@ -10,9 +10,12 @@ import {
   type AdminConfirmationSource,
   type DeliverOrderPayload,
   type DispatchOrderPayload,
+  type OrderEvent,
   type OrderMessage,
 } from '@/types/orders'
 import {
+  capiPurchaseStatusMeta,
+  capiSkipReasonMeta,
   channelMeta,
   codPaymentStatusMeta,
   confirmationSourceMeta,
@@ -91,6 +94,40 @@ const assignedCourierName = computed(() => {
 const assignedCarrierName = computed(() => {
   const id = detail.value?.assignedCarrierId
   return id ? carriersById.value.get(id)?.name : undefined
+})
+
+// Conversion Meta et origine publicitaire (Chantier 5) : champs facultatifs, les cartes
+// n'apparaissent que si le backend les renvoie.
+const euroFormatter = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' })
+// Texte présent : chaîne non vide après trim, ou nombre fini. Tout autre type (objet, booléen…)
+// venu d'un backend plus récent est ignoré sans erreur.
+const hasText = (value: unknown): boolean =>
+  typeof value === 'string' ? Boolean(value.trim()) : typeof value === 'number' && Number.isFinite(value)
+
+const hasCapiStatus = computed(() => Boolean(detail.value?.capiPurchaseStatus))
+const capiValueLabel = computed(() => {
+  const value = detail.value?.capiValueEur
+  return typeof value === 'number' && Number.isFinite(value) ? euroFormatter.format(value) : undefined
+})
+
+function skipReasonLabel(event: OrderEvent): string | undefined {
+  if (event.type !== 'capi_purchase_skipped') return undefined
+  const reason = event.metadata?.reason
+  return typeof reason === 'string' && reason ? lookupMeta(capiSkipReasonMeta, reason).label : undefined
+}
+// Motif de la dernière conversion ignorée, lu dans l'historique (l'ordre de l'API n'est pas supposé).
+const capiSkipReason = computed(() => {
+  if (detail.value?.capiPurchaseStatus !== 'skipped') return undefined
+  const latest = detailEvents.value
+    .filter((event) => event.type === 'capi_purchase_skipped')
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+  return latest ? skipReasonLabel(latest) : undefined
+})
+
+const hasAdOrigin = computed(() => {
+  const order = detail.value
+  if (!order) return false
+  return [order.campaignId, order.adsetId, order.adId, order.utmSource, order.utmMedium, order.fbclid].some(hasText)
 })
 
 const lineItems = computed(() => detail.value?.lineItems ?? [])
@@ -536,6 +573,56 @@ onMounted(() => {
               <div class="amount-row"><span class="text-medium-emphasis">Source</span><span>{{ formatNullable(detail.sourceName) }}</span></div>
             </v-card-text>
           </v-card>
+
+          <!-- Conversion Meta (Chantier 5) : masquée tant que le backend n'envoie pas le statut. -->
+          <v-card v-if="hasCapiStatus" border flat rounded="lg">
+            <v-card-title class="d-flex align-center ga-2 text-subtitle-1 font-weight-bold">
+              <v-icon icon="mdi-facebook" color="primary" size="20" /> Conversion Meta
+            </v-card-title>
+            <v-card-text>
+              <StatusChip :table="capiPurchaseStatusMeta" :value="detail.capiPurchaseStatus" size="default" class="mb-3" />
+              <dl class="info-list">
+                <div v-if="detail.capiPurchaseSentAt"><dt>Envoyée le</dt><dd>{{ formatDateTime(detail.capiPurchaseSentAt) }}</dd></div>
+                <div v-if="capiValueLabel"><dt>Valeur envoyée</dt><dd>{{ capiValueLabel }}</dd></div>
+                <div v-if="capiSkipReason"><dt>Motif</dt><dd class="text-right">{{ capiSkipReason }}</dd></div>
+              </dl>
+              <v-alert
+                v-if="detail.capiPurchaseStatus === 'failed'"
+                type="error"
+                variant="tonal"
+                density="compact"
+                class="mt-3"
+              >
+                <span class="text-caption text-break">{{ hasText(detail.capiPurchaseError) ? detail.capiPurchaseError : 'Erreur inconnue' }}</span>
+              </v-alert>
+            </v-card-text>
+          </v-card>
+
+          <!-- Origine publicitaire (lecture seule) : masquée si aucun champ n'est renseigné. -->
+          <v-card v-if="hasAdOrigin" border flat rounded="lg">
+            <v-card-title class="d-flex align-center ga-2 text-subtitle-1 font-weight-bold">
+              <v-icon icon="mdi-bullhorn-outline" color="primary" size="20" /> Origine publicitaire
+            </v-card-title>
+            <v-card-text>
+              <v-chip
+                v-if="hasText(detail.fbclid)"
+                size="small"
+                color="info"
+                variant="tonal"
+                prepend-icon="mdi-facebook"
+                class="mb-3"
+              >
+                Clic Facebook
+              </v-chip>
+              <dl class="info-list">
+                <div v-if="hasText(detail.campaignId)"><dt>Campagne</dt><dd class="text-right text-break">{{ detail.campaignId }}</dd></div>
+                <div v-if="hasText(detail.adsetId)"><dt>Ensemble de pubs</dt><dd class="text-right text-break">{{ detail.adsetId }}</dd></div>
+                <div v-if="hasText(detail.adId)"><dt>Pub</dt><dd class="text-right text-break">{{ detail.adId }}</dd></div>
+                <div v-if="hasText(detail.utmSource)"><dt>Source UTM</dt><dd class="text-right text-break">{{ detail.utmSource }}</dd></div>
+                <div v-if="hasText(detail.utmMedium)"><dt>Support UTM</dt><dd class="text-right text-break">{{ detail.utmMedium }}</dd></div>
+              </dl>
+            </v-card-text>
+          </v-card>
         </div>
 
         <!-- RIGHT -->
@@ -684,6 +771,9 @@ onMounted(() => {
                   </div>
                   <div v-if="event.actorName" class="text-caption text-medium-emphasis">
                     par {{ event.actorName }}
+                  </div>
+                  <div v-if="skipReasonLabel(event)" class="text-caption text-medium-emphasis">
+                    Motif : {{ skipReasonLabel(event) }}
                   </div>
                   <div v-if="event.note" class="text-body-2 font-italic mt-1">« {{ event.note }} »</div>
                 </v-timeline-item>
