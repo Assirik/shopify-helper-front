@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAttentionStore, type AttentionFilter } from '@/stores/attention'
 import type { AttentionOrder, AttentionReason } from '@/types/attention'
+import { lookupMeta } from '@/constants/status'
 import { orderActionErrorMessage } from '@/utils/orderErrors'
 import { bulkSummary } from '@/utils/bulkSummary'
 import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
@@ -35,7 +36,11 @@ const reasons: Record<AttentionReason, { label: string; color: string }> = {
   invalid_number: { label: 'Numéro invalide', color: 'error' },
   late_confirm: { label: 'Confirmation tardive', color: 'warning' },
   unreachable: { label: 'Injoignable', color: 'primary' },
+  phone_mismatch: { label: 'Numéro différent', color: 'error' },
 }
+
+// Un motif plus récent que ce front (valeur inconnue) garde un libellé de repli neutre.
+const reasonMeta = (reason: string) => lookupMeta(reasons, reason)
 
 const amountFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 })
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', {
@@ -126,6 +131,7 @@ const filters: Array<{ key: AttentionFilter; label: string; color?: string, bord
   { key: 'invalid_number', label: 'Numéro invalide', color: 'error' },
   { key: 'late_confirm', label: 'Confirmation tardive', color: 'warning' },
   { key: 'unreachable', label: 'Injoignable', color: 'primary' },
+  { key: 'phone_mismatch', label: 'Numéro différent', color: 'error' },
 ]
 
 const filterCount = (filter: AttentionFilter) => counts.value[filter]
@@ -289,8 +295,8 @@ onMounted(() => {
         </template>
 
         <template #item.reason="{ item }">
-          <v-chip :color="reasons[item.reason].color" size="small" variant="tonal" :border="`${reasons[item.reason].color} sm opacity-50`">
-            <strong>{{ reasons[item.reason].label }}x </strong>
+          <v-chip :color="reasonMeta(item.reason).color" size="small" variant="tonal" :border="`${reasonMeta(item.reason).color} sm opacity-50`">
+            <strong>{{ reasonMeta(item.reason).label }}x </strong>
           </v-chip>
         </template>
 

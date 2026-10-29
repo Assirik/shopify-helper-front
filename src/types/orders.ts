@@ -16,6 +16,9 @@ export type DeliveryChannel = 'internal' | 'carrier'
 /** Statut d'encaissement COD. */
 export type CodPaymentStatus = 'paid' | 'partial' | 'unpaid'
 
+/** Statut de l'envoi de la conversion « Purchase » à Meta (Chantier 5 · API de conversions). */
+export type CapiPurchaseStatus = 'pending' | 'sent' | 'failed' | 'skipped'
+
 /**
  * Champs opérationnels partagés par la liste et le détail. Tous optionnels :
  * une commande non encore confirmée n'a pas encore d'`operationalStatus`.
@@ -114,6 +117,22 @@ export interface OrderDetail extends OrderOperationalFields {
   lastCustomerMessageText?: string
   lastCustomerMessageAt?: string
   lastCustomerMessageChannel?: string
+  /**
+   * Conversion Meta et origine publicitaire (Chantier 5). Tous facultatifs : absents tant que
+   * le backend ne les renvoie pas, ou pour une commande qui ne vient pas d'une publicité.
+   */
+  capiPurchaseStatus?: CapiPurchaseStatus
+  capiPurchaseSentAt?: string
+  capiEventId?: string
+  capiPurchaseError?: string
+  /** Valeur envoyée à Meta, en euros. */
+  capiValueEur?: number
+  fbclid?: string
+  adId?: string
+  campaignId?: string
+  adsetId?: string
+  utmSource?: string
+  utmMedium?: string
   createdAt: string
 }
 
@@ -141,6 +160,10 @@ export type OrderEventType =
   | 'returned'
   | 'payment_recorded'
   | 'note'
+  | 'capi_purchase_sent'
+  | 'capi_purchase_failed'
+  | 'capi_purchase_skipped'
+  | 'phone_mismatch'
 
 /** Événement d'audit d'une transition de commande (`GET /orders/:id` → `events`). */
 export interface OrderEvent {

@@ -1,4 +1,10 @@
-export type AttentionReason = 'free_text' | 'sms_only' | 'invalid_number' | 'late_confirm' | 'unreachable'
+export type AttentionReason =
+  | 'free_text'
+  | 'sms_only'
+  | 'invalid_number'
+  | 'late_confirm'
+  | 'unreachable'
+  | 'phone_mismatch'
 
 export type CustomerConfirmationStatus =
   | 'pending'
@@ -39,6 +45,7 @@ export interface AttentionCounts {
   invalid_number: number
   late_confirm: number
   unreachable: number
+  phone_mismatch: number
 }
 
 export interface Pagination {
