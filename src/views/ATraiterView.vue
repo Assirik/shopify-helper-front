@@ -37,6 +37,7 @@ const reasons: Record<AttentionReason, { label: string; color: string }> = {
   late_confirm: { label: 'Confirmation tardive', color: 'warning' },
   unreachable: { label: 'Injoignable', color: 'primary' },
   phone_mismatch: { label: 'Numéro différent', color: 'error' },
+  notification_not_scheduled: { label: 'Demande non envoyée', color: 'warning' },
 }
 
 // Un motif plus récent que ce front (valeur inconnue) garde un libellé de repli neutre.
@@ -132,6 +133,7 @@ const filters: Array<{ key: AttentionFilter; label: string; color?: string, bord
   { key: 'late_confirm', label: 'Confirmation tardive', color: 'warning' },
   { key: 'unreachable', label: 'Injoignable', color: 'primary' },
   { key: 'phone_mismatch', label: 'Numéro différent', color: 'error' },
+  { key: 'notification_not_scheduled', label: 'Demande non envoyée', color: 'warning' },
 ]
 
 const filterCount = (filter: AttentionFilter) => counts.value[filter]

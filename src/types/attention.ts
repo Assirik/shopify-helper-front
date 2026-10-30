@@ -5,6 +5,7 @@ export type AttentionReason =
   | 'late_confirm'
   | 'unreachable'
   | 'phone_mismatch'
+  | 'notification_not_scheduled'
 
 export type CustomerConfirmationStatus =
   | 'pending'
@@ -46,6 +47,7 @@ export interface AttentionCounts {
   late_confirm: number
   unreachable: number
   phone_mismatch: number
+  notification_not_scheduled: number
 }
 
 export interface Pagination {
