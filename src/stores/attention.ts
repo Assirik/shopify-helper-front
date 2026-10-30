@@ -20,6 +20,7 @@ const emptyCounts = (): AttentionCounts => ({
   late_confirm: 0,
   unreachable: 0,
   phone_mismatch: 0,
+  notification_not_scheduled: 0,
 })
 
 const emptyPagination = (): Pagination => ({ page: 1, limit: 20, total: 0, pages: 0 })
