@@ -4,10 +4,12 @@ import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAttentionStore, type AttentionFilter } from '@/stores/attention'
 import type { AttentionOrder, AttentionReason } from '@/types/attention'
+import type { AdminConfirmationSource } from '@/types/orders'
 import { lookupMeta } from '@/constants/status'
 import { orderActionErrorMessage } from '@/utils/orderErrors'
 import { bulkSummary } from '@/utils/bulkSummary'
 import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
+import ConfirmOrderDialog from '@/components/ConfirmOrderDialog.vue'
 
 const store = useAttentionStore()
 const router = useRouter()
@@ -16,6 +18,11 @@ const snackbar = ref({ show: false, text: '', color: 'neutral' })
 const pendingCancellation = ref<AttentionOrder | null>(null)
 const cancellationSubmitting = computed(() =>
   pendingCancellation.value ? store.mutatingIds.includes(pendingCancellation.value.id) : false,
+)
+// « Numéro différent » : la confirmation passe par la fenêtre « Par appel », jamais directement.
+const pendingCall = ref<AttentionOrder | null>(null)
+const callSubmitting = computed(() =>
+  pendingCall.value ? store.mutatingIds.includes(pendingCall.value.id) : false,
 )
 const bulkLoading = computed(() => selectedIds.value.some(id => store.mutatingIds.includes(id)))
 
@@ -66,8 +73,24 @@ function showDetail(_event: MouseEvent, row: { item: AttentionOrder }) {
 }
 
 async function confirmOrder(order: AttentionOrder) {
+  if (order.reason === 'phone_mismatch') {
+    pendingCall.value = order
+    return
+  }
   try {
     await store.confirm(order.id)
+    snackbar.value = { show: true, text: `${order.orderName} confirmée.`, color: 'success' }
+  } catch (cause) {
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
+async function submitCallConfirmation(source: AdminConfirmationSource) {
+  const order = pendingCall.value
+  if (!order) return
+  try {
+    await store.confirm(order.id, source)
+    pendingCall.value = null
     snackbar.value = { show: true, text: `${order.orderName} confirmée.`, color: 'success' }
   } catch (cause) {
     snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
@@ -227,6 +250,9 @@ onMounted(() => {
         >
           Relancer ({{ store.selectedRemindableIds.length }})
         </v-btn>
+        <span v-if="store.selectedPhoneMismatchCount" class="text-caption text-medium-emphasis">
+          {{ store.selectedPhoneMismatchCount }} « Numéro différent » : à confirmer une par une, par appel.
+        </span>
         <v-spacer />
         <v-btn
           icon="mdi-close"
@@ -317,7 +343,7 @@ onMounted(() => {
 
         <template #item.actions="{ item }">
           <div class="d-flex justify-end ga-1" @click.stop>
-            <v-tooltip v-if="item.capabilities.canConfirm" text="Confirmer" location="top">
+            <v-tooltip v-if="item.capabilities.canConfirm" :text="item.reason === 'phone_mismatch' ? 'Confirmer par appel' : 'Confirmer'" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
@@ -367,6 +393,16 @@ onMounted(() => {
     <v-snackbar v-model="snackbar.show" :timeout="3000" :color="snackbar.color" role="status">
       {{ snackbar.text }}
     </v-snackbar>
+
+    <ConfirmOrderDialog
+      :model-value="Boolean(pendingCall)"
+      :order-name="pendingCall?.orderName"
+      :order-phone="pendingCall?.customerPhone"
+      call-only
+      :submitting="callSubmitting"
+      @update:model-value="(value) => { if (!value) pendingCall = null }"
+      @confirm="submitCallConfirmation"
+    />
 
     <CancelOrderDialog
       :model-value="Boolean(pendingCancellation)"

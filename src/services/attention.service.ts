@@ -4,6 +4,7 @@ import type {
   AttentionReason,
   BulkOrderResult,
 } from '@/types/attention'
+import type { AdminConfirmationSource } from '@/types/orders'
 
 export interface AttentionQueueParams {
   reason?: AttentionReason
@@ -17,8 +18,8 @@ export const attentionService = {
     return data
   },
 
-  async confirm(orderId: string) {
-    const { data } = await api.post(`/orders/${orderId}/confirm`)
+  async confirm(orderId: string, source?: AdminConfirmationSource) {
+    const { data } = await api.post(`/orders/${orderId}/confirm`, source ? { source } : undefined)
     return data
   },
 

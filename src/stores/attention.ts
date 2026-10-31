@@ -9,6 +9,7 @@ import type {
   BulkOrderResult,
   Pagination,
 } from '@/types/attention'
+import type { AdminConfirmationSource } from '@/types/orders'
 
 export type AttentionFilter = 'all' | AttentionReason
 
@@ -37,7 +38,17 @@ export const useAttentionStore = defineStore('attention', () => {
   let requestSequence = 0
 
   const selectedOrders = computed(() => items.value.filter(order => selectedIds.value.includes(order.id)))
-  const selectedConfirmableIds = computed(() => selectedOrders.value.filter(order => order.capabilities.canConfirm).map(order => order.id))
+  // « Numéro différent » est exclu de la confirmation groupée : elle exige un appel au client,
+  // commande par commande (fenêtre « Par appel »). Mieux vaut ignorer ces lignes que confirmer
+  // en masse une commande dont le message vient d'un autre numéro.
+  const selectedConfirmableIds = computed(() =>
+    selectedOrders.value
+      .filter(order => order.capabilities.canConfirm && order.reason !== 'phone_mismatch')
+      .map(order => order.id),
+  )
+  const selectedPhoneMismatchCount = computed(
+    () => selectedOrders.value.filter(order => order.reason === 'phone_mismatch').length,
+  )
   const selectedRemindableIds = computed(() => selectedOrders.value.filter(order => order.capabilities.canRemind).map(order => order.id))
 
   function setMutating(orderIds: string[], active: boolean) {
@@ -112,7 +123,8 @@ export const useAttentionStore = defineStore('attention', () => {
     }
   }
 
-  const confirm = (orderId: string) => runUnitAction(orderId, () => attentionService.confirm(orderId))
+  const confirm = (orderId: string, source?: AdminConfirmationSource) =>
+    runUnitAction(orderId, () => attentionService.confirm(orderId, source))
   const remind = (orderId: string) => runUnitAction(orderId, () => attentionService.remind(orderId))
   const cancel = (orderId: string, reason: string) => runUnitAction(orderId, () => attentionService.cancel(orderId, reason))
 
@@ -143,6 +155,7 @@ export const useAttentionStore = defineStore('attention', () => {
     selectedIds,
     selectedOrders,
     selectedConfirmableIds,
+    selectedPhoneMismatchCount,
     selectedRemindableIds,
     fetchQueue,
     fetchCounts,

@@ -14,6 +14,8 @@ import {
   customerConfirmationStatusMeta,
   notificationStatusMeta,
   operationalStatusMeta,
+  phoneMismatchMeta,
+  PHONE_MISMATCH_REASON,
 } from '@/constants/status'
 import { formatAmount, formatDateTime, formatNullable, formatPhone } from '@/utils/format'
 import { orderActionErrorMessage } from '@/utils/orderErrors'
@@ -221,6 +223,15 @@ const cancellationSubmitting = computed(() =>
 const confirmationSubmitting = computed(() =>
   pendingConfirmation.value ? store.mutatingIds.includes(pendingConfirmation.value.id) : false,
 )
+
+// « Numéro différent » : la confirmation passe obligatoirement par la fenêtre « Par appel ».
+const confirmationCallOnly = computed(
+  () => pendingConfirmation.value?.attentionReasonCode === PHONE_MISMATCH_REASON,
+)
+const confirmationPhone = computed(() => {
+  const phone = pendingConfirmation.value?.customerPhoneE164
+  return phone ? formatPhone(phone) : undefined
+})
 
 function confirmOrder(order: OrderListItem) {
   pendingConfirmation.value = order
@@ -510,6 +521,9 @@ onMounted(() => {
         >
           Relancer ({{ store.selectedRemindableIds.length }})
         </v-btn>
+        <span v-if="store.selectedPhoneMismatchCount" class="text-caption text-medium-emphasis">
+          {{ store.selectedPhoneMismatchCount }} « Numéro différent » : à confirmer une par une, par appel.
+        </span>
         <v-spacer />
         <v-btn
           icon="mdi-close"
@@ -582,7 +596,18 @@ onMounted(() => {
         </template>
 
         <template #item.customerConfirmationStatus="{ item }">
-          <StatusChip :table="customerConfirmationStatusMeta" :value="item.customerConfirmationStatus" />
+          <div class="d-flex flex-column align-start ga-1 py-1">
+            <StatusChip :table="customerConfirmationStatusMeta" :value="item.customerConfirmationStatus" />
+            <v-chip
+              v-if="item.attentionReasonCode === PHONE_MISMATCH_REASON"
+              size="x-small"
+              variant="tonal"
+              :color="phoneMismatchMeta.color"
+              :prepend-icon="phoneMismatchMeta.icon"
+            >
+              {{ phoneMismatchMeta.label }}
+            </v-chip>
+          </div>
         </template>
 
         <template #item.operationalStatus="{ item }">
@@ -600,7 +625,7 @@ onMounted(() => {
 
         <template #item.actions="{ item }">
           <div class="d-flex justify-end ga-1" @click.stop>
-            <v-tooltip v-if="rowCapabilities(item).canConfirm" text="Confirmer" location="top">
+            <v-tooltip v-if="rowCapabilities(item).canConfirm" :text="item.attentionReasonCode === PHONE_MISMATCH_REASON ? 'Confirmer par appel' : 'Confirmer'" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
@@ -717,6 +742,8 @@ onMounted(() => {
     <ConfirmOrderDialog
       :model-value="Boolean(pendingConfirmation)"
       :order-name="pendingConfirmation?.shopifyOrderName"
+      :call-only="confirmationCallOnly"
+      :order-phone="confirmationPhone"
       :submitting="confirmationSubmitting"
       @update:model-value="(value) => { if (!value) pendingConfirmation = null }"
       @confirm="submitConfirmation"

@@ -22,6 +22,8 @@ export interface MessageListItem {
   templateName?: string
   status: string
   attemptCount?: number
+  errorCode?: string
+  errorMessage?: string
   fallbackOfMessageId?: string
   fallbackOf?: MessageFallbackRef
   createdAt: string
