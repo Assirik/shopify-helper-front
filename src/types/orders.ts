@@ -60,6 +60,8 @@ export interface OrderListItem extends OrderOperationalFields {
   customerConfirmationStatus: string
   notificationStatus: string
   createdAt: string
+  /** Motif « À traiter » courant (`phone_mismatch`…) ; absent hors file « À traiter ». */
+  attentionReasonCode?: string
   /** Dernière note interne (Lot 0 · F16) — absente tant que le backend ne l'expose pas. */
   lastNoteText?: string
   lastNoteAt?: string
@@ -117,6 +119,9 @@ export interface OrderDetail extends OrderOperationalFields {
   lastCustomerMessageText?: string
   lastCustomerMessageAt?: string
   lastCustomerMessageChannel?: string
+  /** Motif « À traiter » courant (`phone_mismatch`, `free_text`…) ; absent hors file « À traiter ». */
+  attentionReasonCode?: string
+  attentionReason?: string
   /**
    * Conversion Meta et origine publicitaire (Chantier 5). Tous facultatifs : absents tant que
    * le backend ne les renvoie pas, ou pour une commande qui ne vient pas d'une publicité.

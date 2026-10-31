@@ -10,6 +10,13 @@ const props = defineProps<{
   modelValue: boolean
   orderName?: string
   submitting?: boolean
+  /**
+   * Confirmation réservée à l'appel (commande « Numéro différent ») : pas de choix de source,
+   * l'agent confirme seulement après avoir appelé le client au numéro de la commande.
+   */
+  callOnly?: boolean
+  /** Numéro de la commande, affiché en mode `callOnly`. */
+  orderPhone?: string
 }>()
 
 const emit = defineEmits<{
@@ -33,7 +40,7 @@ function close() {
 
 function submit() {
   if (props.submitting) return
-  emit('confirm', source.value)
+  emit('confirm', props.callOnly ? 'phone_call' : source.value)
 }
 </script>
 
@@ -52,8 +59,18 @@ function submit() {
         Confirmer la commande {{ orderName }}
       </v-card-title>
       <v-card-text>
-        <p class="text-body-2 text-medium-emphasis mb-3">Comment le client a-t-il confirmé ?</p>
-        <v-radio-group v-model="source" hide-details>
+        <v-alert v-if="callOnly" type="warning" variant="tonal" density="compact" class="mb-3">
+          Le message vient d’un autre numéro que celui de la commande.
+          <template v-if="orderPhone">Appelez le client au <strong>{{ orderPhone }}</strong></template>
+          <template v-else>Appelez le client (le numéro de la commande est absent)</template>
+          et confirmez seulement s’il valide la commande par téléphone.
+        </v-alert>
+        <p v-if="callOnly" class="text-body-2 d-flex align-center ga-2 mb-3">
+          <v-icon icon="mdi-phone-outline" size="18" />
+          Confirmation par appel téléphonique
+        </p>
+        <p v-else class="text-body-2 text-medium-emphasis mb-3">Comment le client a-t-il confirmé ?</p>
+        <v-radio-group v-if="!callOnly" v-model="source" hide-details>
           <v-radio value="phone_call" density="compact">
             <template #label>
               <span class="d-inline-flex align-center ga-2">

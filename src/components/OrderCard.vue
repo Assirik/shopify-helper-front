@@ -10,6 +10,7 @@ import {
   whatsappNumber,
 } from '@/utils/format'
 import { ORDER_STAGE_STEPS, orderStage } from '@/utils/orderStage'
+import { phoneMismatchMeta, PHONE_MISMATCH_REASON } from '@/constants/status'
 
 /**
  * Fiche d'une commande pour la vue « cartes » de la liste. Purement présentationnelle :
@@ -132,6 +133,16 @@ function segmentState(index: number) {
       <div class="order-card__stage-label">
         <v-icon :icon="stage.icon" size="16" />
         {{ stage.label }}
+        <v-chip
+          v-if="order.attentionReasonCode === PHONE_MISMATCH_REASON"
+          size="x-small"
+          variant="tonal"
+          :color="phoneMismatchMeta.color"
+          :prepend-icon="phoneMismatchMeta.icon"
+          class="ml-2"
+        >
+          {{ phoneMismatchMeta.label }}
+        </v-chip>
       </div>
     </div>
 

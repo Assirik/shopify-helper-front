@@ -27,6 +27,8 @@ import {
   orderEventTypeMeta,
   templatePurposeMeta,
   formatProvider,
+  isDeliberatelyNotSent,
+  notSentMessageMeta,
 } from '@/constants/status'
 import { formatAmount, formatDateTime, formatNullable, formatPhone } from '@/utils/format'
 import { orderActionErrorMessage, messageRetryErrorMessage } from '@/utils/orderErrors'
@@ -128,6 +130,24 @@ const hasAdOrigin = computed(() => {
   const order = detail.value
   if (!order) return false
   return [order.campaignId, order.adsetId, order.adId, order.utmSource, order.utmMedium, order.fbclid].some(hasText)
+})
+
+// Messages volontairement non envoyés : ni échec, ni « Réessayer », hors du compteur d'échecs.
+const failedMessageCount = computed(
+  () => detailMessages.value.filter((message) => message.status === 'failed' && !isDeliberatelyNotSent(message)).length,
+)
+
+// « Numéro différent » : le message vient d'un autre numéro que celui de la commande.
+const isPhoneMismatch = computed(() => detail.value?.attentionReasonCode === 'phone_mismatch')
+const phoneMismatchSender = computed(() => {
+  const latest = detailEvents.value
+    .filter((event) => event.type === 'phone_mismatch')
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+  const sender = latest?.metadata?.senderE164
+  return {
+    phone: typeof sender === 'string' && sender ? sender : undefined,
+    detectedAt: latest?.createdAt,
+  }
 })
 
 const lineItems = computed(() => detail.value?.lineItems ?? [])
@@ -445,6 +465,47 @@ onMounted(() => {
           </v-btn>
         </div>
       </div>
+
+      <!-- Numéro différent : tous les éléments pour décider -->
+      <v-card
+        v-if="isPhoneMismatch"
+        border
+        flat
+        rounded="lg"
+        color="error"
+        variant="tonal"
+        class="mb-5"
+        data-test="phone-mismatch"
+      >
+        <v-card-text>
+          <div class="d-flex align-center ga-2 mb-1">
+            <v-icon icon="mdi-phone-alert-outline" size="20" />
+            <span class="text-subtitle-1 font-weight-bold">Motif : Numéro différent</span>
+          </div>
+          <p class="text-body-2 mb-3">
+            Un message est arrivé d’un autre numéro que celui de la commande. Ne confirmez qu’après avoir appelé
+            le client au numéro de la commande.
+          </p>
+          <dl class="info-list">
+            <div><dt>Numéro de la commande</dt><dd>{{ formatPhone(detail.customerPhoneE164) }}</dd></div>
+            <div>
+              <dt>Numéro qui a écrit</dt>
+              <dd>{{ phoneMismatchSender.phone ? formatPhone(phoneMismatchSender.phone) : 'Numéro inconnu' }}</dd>
+            </div>
+            <div>
+              <dt>Texte reçu</dt>
+              <dd class="font-italic">
+                <template v-if="detail.lastCustomerMessageText">« {{ detail.lastCustomerMessageText }} »</template>
+                <template v-else>—</template>
+              </dd>
+            </div>
+            <div>
+              <dt>Reçu le</dt>
+              <dd>{{ formatDateTime(detail.lastCustomerMessageAt ?? phoneMismatchSender.detectedAt) }}</dd>
+            </div>
+          </dl>
+        </v-card-text>
+      </v-card>
 
       <div class="detail-grid">
         <!-- LEFT -->
@@ -783,7 +844,7 @@ onMounted(() => {
 
           <!-- Dernier message client -->
           <v-card
-            v-if="detail.lastCustomerMessageText"
+            v-if="detail.lastCustomerMessageText && !isPhoneMismatch"
             border
             flat
             rounded="lg"
@@ -810,7 +871,7 @@ onMounted(() => {
               <div v-if="detailSummary" class="d-flex flex-wrap ga-2 mb-4">
                 <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-whatsapp">{{ detailSummary.byChannel.whatsapp ?? 0 }} WhatsApp</v-chip>
                 <v-chip size="small" variant="tonal" color="info" prepend-icon="mdi-message-text-outline">{{ detailSummary.byChannel.sms ?? 0 }} SMS</v-chip>
-                <v-chip size="small" variant="tonal" color="error" prepend-icon="mdi-alert-circle-outline">{{ detailSummary.byStatus.failed ?? 0 }} échec(s)</v-chip>
+                <v-chip size="small" variant="tonal" color="error" prepend-icon="mdi-alert-circle-outline">{{ failedMessageCount }} échec(s)</v-chip>
               </div>
 
               <p v-if="!detailMessages.length" class="text-body-2 text-medium-emphasis mb-0">
@@ -821,7 +882,7 @@ onMounted(() => {
                 <v-timeline-item
                   v-for="message in detailMessages"
                   :key="message.id"
-                  :dot-color="lookupMeta(messageStatusMeta, message.status).color"
+                  :dot-color="isDeliberatelyNotSent(message) ? notSentMessageMeta.color : lookupMeta(messageStatusMeta, message.status).color"
                   size="x-small"
                 >
                   <div class="message-item">
@@ -836,7 +897,22 @@ onMounted(() => {
                       </v-chip>
                       <span class="text-caption text-medium-emphasis">{{ formatProvider(message.provider) }}</span>
                       <v-spacer />
+                      <v-tooltip v-if="isDeliberatelyNotSent(message)" :text="message.errorMessage ?? message.errorCode" location="top">
+                        <template #activator="{ props: tooltipProps }">
+                          <v-chip
+                            v-bind="tooltipProps"
+                            size="x-small"
+                            variant="tonal"
+                            :color="notSentMessageMeta.color"
+                            :prepend-icon="notSentMessageMeta.icon"
+                            data-test="not-sent"
+                          >
+                            {{ notSentMessageMeta.label }}
+                          </v-chip>
+                        </template>
+                      </v-tooltip>
                       <span
+                        v-else
                         class="text-caption font-weight-medium d-inline-flex align-center ga-1"
                         :class="`text-${lookupMeta(messageStatusMeta, message.status).color}`"
                       >
@@ -852,7 +928,7 @@ onMounted(() => {
                       « {{ message.body }} »
                     </v-sheet>
                     <v-alert
-                      v-if="message.status === 'failed'"
+                      v-if="message.status === 'failed' && !isDeliberatelyNotSent(message)"
                       type="error"
                       variant="tonal"
                       density="compact"
@@ -929,6 +1005,8 @@ onMounted(() => {
     <ConfirmOrderDialog
       v-model="confirmOpen"
       :order-name="detail?.shopifyOrderName"
+      :call-only="isPhoneMismatch"
+      :order-phone="detail?.customerPhoneE164 ? formatPhone(detail.customerPhoneE164) : undefined"
       :submitting="actionLoading"
       @confirm="submitConfirmation"
     />

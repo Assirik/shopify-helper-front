@@ -57,6 +57,39 @@ export const messageStatusMeta: Record<string, StatusMeta> = {
   failed: { label: 'Échec', color: 'error', icon: 'mdi-alert-circle-outline' },
 }
 
+/**
+ * Codes d'erreur d'un message `failed` qui n'est PAS un échec : le backend a volontairement
+ * renoncé à l'envoyer (commande déjà traitée, demande déjà partie, notification ignorée).
+ * Aucun « Réessayer », et ces messages ne comptent pas dans « N échec(s) ».
+ */
+export const DELIBERATELY_NOT_SENT_ERROR_CODES: readonly string[] = [
+  'ORDER_NO_LONGER_PENDING',
+  'CONFIRMATION_REQUEST_ALREADY_SENT',
+  'NOTIFICATION_SKIPPED',
+]
+
+/** Puce neutre d'un message volontairement non envoyé. */
+export const notSentMessageMeta: StatusMeta = {
+  label: 'Non envoyée (commande déjà traitée)',
+  color: 'neutral',
+  icon: 'mdi-debug-step-over',
+}
+
+/** Vrai pour un message `failed` dont le code d'erreur est un non-envoi volontaire. */
+export const isDeliberatelyNotSent = (message: { status: string; errorCode?: string }): boolean =>
+  message.status === 'failed' &&
+  Boolean(message.errorCode) &&
+  DELIBERATELY_NOT_SENT_ERROR_CODES.includes(message.errorCode as string)
+
+/** Motif « À traiter » dont la confirmation passe obligatoirement par un appel au client. */
+export const PHONE_MISMATCH_REASON = 'phone_mismatch'
+
+export const phoneMismatchMeta: StatusMeta = {
+  label: 'Numéro différent',
+  color: 'error',
+  icon: 'mdi-phone-alert-outline',
+}
+
 /** Canal d'un message. */
 export const channelMeta: Record<string, StatusMeta> = {
   whatsapp: { label: 'WhatsApp', color: 'success', icon: 'mdi-whatsapp' },
