@@ -47,8 +47,9 @@ export const useAttentionStore = defineStore('attention', () => {
       .filter(order => order.capabilities.canConfirm && !requiresCallConfirmation(order))
       .map(order => order.id),
   )
+  // Only orders that can still be confirmed count: an already confirmed order has nothing left to call about.
   const selectedPhoneMismatchCount = computed(
-    () => selectedOrders.value.filter(order => requiresCallConfirmation(order)).length,
+    () => selectedOrders.value.filter(order => order.capabilities.canConfirm && requiresCallConfirmation(order)).length,
   )
   const selectedRemindableIds = computed(() => selectedOrders.value.filter(order => order.capabilities.canRemind).map(order => order.id))
 
@@ -119,6 +120,11 @@ export const useAttentionStore = defineStore('attention', () => {
     try {
       await action()
       await fetchQueue()
+    } catch (cause) {
+      // 409 refusal: the order changed server-side (e.g. flagged "phone mismatch" while the screen
+      // was open). Reload so the row does not stay stale.
+      if (toApiFailure(cause).status === 409) await fetchQueue()
+      throw cause
     } finally {
       setMutating([orderId], false)
     }

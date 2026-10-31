@@ -246,6 +246,10 @@ async function submitConfirmation(source: AdminConfirmationSource) {
     pendingConfirmation.value = null
     snackbar.value = { show: true, text: `${order.shopifyOrderName} confirmée.`, color: 'success' }
   } catch (cause) {
+    // The list may have been reloaded after a 409 refusal: the dialog follows the fresh row (call-only
+    // mode), or closes if the order is gone or can no longer be confirmed. The error message stays.
+    const refreshed = store.items.find(item => item.id === order.id)
+    pendingConfirmation.value = refreshed && rowCapabilities(refreshed).canConfirm ? refreshed : null
     snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
 }
