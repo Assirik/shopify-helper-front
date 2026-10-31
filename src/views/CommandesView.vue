@@ -16,6 +16,7 @@ import {
   operationalStatusMeta,
   phoneMismatchMeta,
   PHONE_MISMATCH_REASON,
+  requiresCallConfirmation,
 } from '@/constants/status'
 import { formatAmount, formatDateTime, formatNullable, formatPhone } from '@/utils/format'
 import { orderActionErrorMessage } from '@/utils/orderErrors'
@@ -226,7 +227,7 @@ const confirmationSubmitting = computed(() =>
 
 // « Numéro différent » : la confirmation passe obligatoirement par la fenêtre « Par appel ».
 const confirmationCallOnly = computed(
-  () => pendingConfirmation.value?.attentionReasonCode === PHONE_MISMATCH_REASON,
+  () => (pendingConfirmation.value ? requiresCallConfirmation(pendingConfirmation.value) : false),
 )
 const confirmationPhone = computed(() => {
   const phone = pendingConfirmation.value?.customerPhoneE164
@@ -625,7 +626,7 @@ onMounted(() => {
 
         <template #item.actions="{ item }">
           <div class="d-flex justify-end ga-1" @click.stop>
-            <v-tooltip v-if="rowCapabilities(item).canConfirm" :text="item.attentionReasonCode === PHONE_MISMATCH_REASON ? 'Confirmer par appel' : 'Confirmer'" location="top">
+            <v-tooltip v-if="rowCapabilities(item).canConfirm" :text="requiresCallConfirmation(item) ? 'Confirmer par appel' : 'Confirmer'" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"

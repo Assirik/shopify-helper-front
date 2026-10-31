@@ -2,6 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { attentionService } from '@/services/attention.service'
 import { toApiFailure } from '@/services/errors'
+import { requiresCallConfirmation } from '@/constants/status'
 import type {
   AttentionCounts,
   AttentionOrder,
@@ -43,11 +44,11 @@ export const useAttentionStore = defineStore('attention', () => {
   // en masse une commande dont le message vient d'un autre numéro.
   const selectedConfirmableIds = computed(() =>
     selectedOrders.value
-      .filter(order => order.capabilities.canConfirm && order.reason !== 'phone_mismatch')
+      .filter(order => order.capabilities.canConfirm && !requiresCallConfirmation(order))
       .map(order => order.id),
   )
   const selectedPhoneMismatchCount = computed(
-    () => selectedOrders.value.filter(order => order.reason === 'phone_mismatch').length,
+    () => selectedOrders.value.filter(order => requiresCallConfirmation(order)).length,
   )
   const selectedRemindableIds = computed(() => selectedOrders.value.filter(order => order.capabilities.canRemind).map(order => order.id))
 

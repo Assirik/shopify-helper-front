@@ -5,7 +5,7 @@ import { storeToRefs } from 'pinia'
 import { useAttentionStore, type AttentionFilter } from '@/stores/attention'
 import type { AttentionOrder, AttentionReason } from '@/types/attention'
 import type { AdminConfirmationSource } from '@/types/orders'
-import { lookupMeta } from '@/constants/status'
+import { lookupMeta, requiresCallConfirmation } from '@/constants/status'
 import { orderActionErrorMessage } from '@/utils/orderErrors'
 import { bulkSummary } from '@/utils/bulkSummary'
 import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
@@ -73,7 +73,7 @@ function showDetail(_event: MouseEvent, row: { item: AttentionOrder }) {
 }
 
 async function confirmOrder(order: AttentionOrder) {
-  if (order.reason === 'phone_mismatch') {
+  if (requiresCallConfirmation(order)) {
     pendingCall.value = order
     return
   }
@@ -343,7 +343,7 @@ onMounted(() => {
 
         <template #item.actions="{ item }">
           <div class="d-flex justify-end ga-1" @click.stop>
-            <v-tooltip v-if="item.capabilities.canConfirm" :text="item.reason === 'phone_mismatch' ? 'Confirmer par appel' : 'Confirmer'" location="top">
+            <v-tooltip v-if="item.capabilities.canConfirm" :text="requiresCallConfirmation(item) ? 'Confirmer par appel' : 'Confirmer'" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"

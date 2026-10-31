@@ -84,6 +84,20 @@ export const isDeliberatelyNotSent = (message: { status: string; errorCode?: str
 /** Motif « À traiter » dont la confirmation passe obligatoirement par un appel au client. */
 export const PHONE_MISMATCH_REASON = 'phone_mismatch'
 
+/**
+ * Vrai si la commande ne peut être confirmée que par appel : motif courant « Numéro différent »
+ * ou marqueur `phoneMismatchAt` (posé à la réception du message et jamais effacé, même si le motif
+ * change ensuite). `reason` couvre les éléments de la file « À traiter ».
+ */
+export const requiresCallConfirmation = (order: {
+  attentionReasonCode?: string | null
+  reason?: string | null
+  phoneMismatchAt?: string | null
+}): boolean =>
+  order.attentionReasonCode === PHONE_MISMATCH_REASON ||
+  order.reason === PHONE_MISMATCH_REASON ||
+  Boolean(order.phoneMismatchAt)
+
 export const phoneMismatchMeta: StatusMeta = {
   label: 'Numéro différent',
   color: 'error',

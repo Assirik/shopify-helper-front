@@ -33,6 +33,8 @@ export interface AttentionOrder {
   }
   isCashOnDelivery: boolean
   reason: AttentionReason
+  /** Date ISO où un message de confirmation est arrivé d'un autre numéro ; jamais effacée. */
+  phoneMismatchAt?: string | null
   lastCustomerMessage: string
   receivedAt: string
   customerConfirmationStatus: CustomerConfirmationStatus

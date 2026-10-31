@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ordersService, type OrderListParams } from '@/services/orders.service'
 import { toApiFailure } from '@/services/errors'
-import { PHONE_MISMATCH_REASON } from '@/constants/status'
+import { requiresCallConfirmation } from '@/constants/status'
 import {
   orderActionCapabilities,
   type AdminConfirmationSource,
@@ -77,11 +77,11 @@ export const useOrdersStore = defineStore('orders', () => {
   // commande par commande (fenêtre « Par appel »).
   const selectedConfirmableIds = computed(() =>
     selectedOrders.value
-      .filter(o => lineCapabilities(o).canConfirm && o.attentionReasonCode !== PHONE_MISMATCH_REASON)
+      .filter(o => lineCapabilities(o).canConfirm && !requiresCallConfirmation(o))
       .map(o => o.id),
   )
   const selectedPhoneMismatchCount = computed(
-    () => selectedOrders.value.filter(o => o.attentionReasonCode === PHONE_MISMATCH_REASON).length,
+    () => selectedOrders.value.filter(o => requiresCallConfirmation(o)).length,
   )
   const selectedRemindableIds = computed(() =>
     selectedOrders.value
