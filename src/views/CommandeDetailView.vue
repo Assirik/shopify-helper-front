@@ -28,6 +28,7 @@ import {
   templatePurposeMeta,
   formatProvider,
   isDeliberatelyNotSent,
+  requiresCallConfirmation,
   notSentMessageMeta,
 } from '@/constants/status'
 import { formatAmount, formatDateTime, formatNullable, formatPhone } from '@/utils/format'
@@ -139,6 +140,8 @@ const failedMessageCount = computed(
 
 // « Numéro différent » : le message vient d'un autre numéro que celui de la commande.
 const isPhoneMismatch = computed(() => detail.value?.attentionReasonCode === 'phone_mismatch')
+// Le marqueur `phoneMismatchAt` survit au changement de motif : la confirmation reste réservée à l'appel.
+const isCallRequired = computed(() => (detail.value ? requiresCallConfirmation(detail.value) : false))
 const phoneMismatchSender = computed(() => {
   const latest = detailEvents.value
     .filter((event) => event.type === 'phone_mismatch')
@@ -506,6 +509,20 @@ onMounted(() => {
           </dl>
         </v-card-text>
       </v-card>
+
+      <!-- Marqueur « autre numéro » conservé alors que le motif a changé -->
+      <v-alert
+        v-else-if="isCallRequired"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        icon="mdi-phone-alert-outline"
+        class="mb-5"
+        data-test="phone-mismatch-reminder"
+      >
+        Message de confirmation reçu d’un autre numéro{{ detail.phoneMismatchAt ? ` le ${formatDateTime(detail.phoneMismatchAt)}` : '' }} :
+        confirmez uniquement après avoir appelé le client.
+      </v-alert>
 
       <div class="detail-grid">
         <!-- LEFT -->
@@ -1005,7 +1022,7 @@ onMounted(() => {
     <ConfirmOrderDialog
       v-model="confirmOpen"
       :order-name="detail?.shopifyOrderName"
-      :call-only="isPhoneMismatch"
+      :call-only="isCallRequired"
       :order-phone="detail?.customerPhoneE164 ? formatPhone(detail.customerPhoneE164) : undefined"
       :submitting="actionLoading"
       @confirm="submitConfirmation"
