@@ -1,5 +1,9 @@
 import { toApiFailure } from '@/services/errors'
 
+/** API code of the "agent confirmation outside a call" refusal, and its short label (bulk summary). */
+export const CALL_REQUIRED_CODE = 'PhoneMismatchRequiresCall'
+export const CALL_REQUIRED_LABEL = 'à confirmer par appel'
+
 const ORDER_ACTION_MESSAGES: Record<string, string> = {
   OrderNotFound: 'Commande introuvable.',
   OrderConfirmationNotAllowed: 'Cette commande ne peut plus être confirmée.',
@@ -33,7 +37,7 @@ const ORDER_ACTION_MESSAGES: Record<string, string> = {
   InvalidCourierFee: 'La rémunération livreur est invalide (ou supérieure à l’encaissé).',
   InvalidCarrierFee: 'Le coût transporteur est invalide (ou supérieur à l’encaissé).',
   InvalidReconciliationDate: 'Date de rapprochement invalide.',
-  PhoneMismatchRequiresCall: 'Cette commande doit être confirmée par appel.',
+  [CALL_REQUIRED_CODE]: 'Cette commande doit être confirmée par appel.',
   InvalidConfirmationSource: 'Source de confirmation invalide.',
   OrderUnreachableNotAllowed: 'Seule une commande en attente de confirmation peut être marquée injoignable.',
   NoteTextRequired: 'La note est vide.',

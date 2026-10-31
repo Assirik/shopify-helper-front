@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useOrdersStore } from '@/stores/orders'
@@ -190,6 +190,9 @@ async function submitConfirmation(source: AdminConfirmationSource) {
     confirmOpen.value = false
     snackbar.value = { show: true, text: 'Commande confirmée.', color: 'success' }
   } catch (cause) {
+    // After a 409 refusal the detail was reloaded: close the dialog if the reload failed (no order left
+    // to confirm) or the order can no longer be confirmed. The error message stays.
+    if (!detail.value || !capabilities.value.canConfirm) confirmOpen.value = false
     snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
 }
@@ -309,6 +312,9 @@ watch(
   },
   { immediate: true },
 )
+
+// Prev/next only changes the route param (same component instance), so this runs on leaving the page.
+onBeforeUnmount(() => store.clearDetail())
 
 onMounted(() => {
   // Résolution des noms livreur/transporteur (l'API ne renvoie que les ids).
@@ -512,7 +518,7 @@ onMounted(() => {
 
       <!-- Marqueur « autre numéro » conservé alors que le motif a changé -->
       <v-alert
-        v-else-if="isCallRequired"
+        v-else-if="isCallRequired && capabilities.canConfirm"
         type="warning"
         variant="tonal"
         density="compact"

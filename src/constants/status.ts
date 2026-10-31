@@ -157,7 +157,7 @@ export const capiPurchaseStatusMeta: Record<string, StatusMeta> = {
 /** Motif d'une conversion ignorée (métadonnée `reason` de l'événement `capi_purchase_skipped`). */
 export const capiSkipReasonMeta: Record<string, StatusMeta> = {
   test: { label: 'Commande de test', color: 'neutral' },
-  cancelled: { label: 'Commande annulée', color: 'neutral' },
+  cancelled: { label: 'Commande annulée ou non confirmée', color: 'neutral' },
   disabled: { label: 'Envoi à Meta désactivé', color: 'neutral' },
   too_old: { label: 'Commande trop ancienne (plus de 7 jours)', color: 'neutral' },
 }

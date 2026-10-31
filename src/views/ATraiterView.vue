@@ -93,6 +93,9 @@ async function submitCallConfirmation(source: AdminConfirmationSource) {
     pendingCall.value = null
     snackbar.value = { show: true, text: `${order.orderName} confirmée.`, color: 'success' }
   } catch (cause) {
+    // After a 409 refusal the queue was reloaded: close the dialog if the order left it or is no longer confirmable.
+    const refreshed = store.items.find(item => item.id === order.id)
+    if (!refreshed || !refreshed.capabilities.canConfirm) pendingCall.value = null
     snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
 }

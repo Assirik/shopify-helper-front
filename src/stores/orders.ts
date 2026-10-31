@@ -80,8 +80,9 @@ export const useOrdersStore = defineStore('orders', () => {
       .filter(o => lineCapabilities(o).canConfirm && !requiresCallConfirmation(o))
       .map(o => o.id),
   )
+  // Only orders that can still be confirmed count: an already confirmed order has nothing left to call about.
   const selectedPhoneMismatchCount = computed(
-    () => selectedOrders.value.filter(o => requiresCallConfirmation(o)).length,
+    () => selectedOrders.value.filter(o => lineCapabilities(o).canConfirm && requiresCallConfirmation(o)).length,
   )
   const selectedRemindableIds = computed(() =>
     selectedOrders.value
@@ -191,12 +192,36 @@ export const useOrdersStore = defineStore('orders', () => {
     }
   }
 
+  // Called when leaving the detail page: `detail` must not outlive it, otherwise an action taken
+  // from the list would reload the stale detail instead of the list. Bumping the sequence drops
+  // any detail request still in flight.
+  function clearDetail() {
+    detailSequence++
+    detailLoading.value = false
+    detailErrorCode.value = ''
+    detail.value = null
+    detailMessages.value = []
+    detailSummary.value = null
+    detailEvents.value = []
+    detailCapabilities.value = null
+  }
+
+  // Reload the detail when it is the one displayed, otherwise the list.
+  async function refreshAfterAction(orderId: string) {
+    if (detail.value?.id === orderId) await fetchDetail(orderId)
+    else await fetchList()
+  }
+
   async function runUnitAction(orderId: string, action: () => Promise<unknown>) {
     setMutating([orderId], true)
     try {
       await action()
-      if (detail.value?.id === orderId) await fetchDetail(orderId)
-      else await fetchList()
+      await refreshAfterAction(orderId)
+    } catch (cause) {
+      // 409 refusal: the order changed server-side (e.g. flagged "phone mismatch" while the screen
+      // was open). Reload so the screen does not stay stale.
+      if (toApiFailure(cause).status === 409) await refreshAfterAction(orderId)
+      throw cause
     } finally {
       setMutating([orderId], false)
     }
@@ -244,6 +269,7 @@ export const useOrdersStore = defineStore('orders', () => {
     mutatingIds,
     selectedIds,
     detail,
+    clearDetail,
     detailMessages,
     detailSummary,
     detailEvents,
