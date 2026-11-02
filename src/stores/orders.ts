@@ -243,6 +243,8 @@ export const useOrdersStore = defineStore('orders', () => {
     runUnitAction(orderId, () => ordersService.markDeliveryFailed(orderId, reason))
   const markReturned = (orderId: string, reason: string) =>
     runUnitAction(orderId, () => ordersService.markReturned(orderId, reason))
+  const resendCapiPurchase = (orderId: string) =>
+    runUnitAction(orderId, () => ordersService.resendCapiPurchase(orderId))
 
   async function runBulk(orderIds: string[], action: (ids: string[]) => Promise<BulkOrderResult>) {
     if (!orderIds.length) return undefined
@@ -298,6 +300,7 @@ export const useOrdersStore = defineStore('orders', () => {
     deliver,
     markDeliveryFailed,
     markReturned,
+    resendCapiPurchase,
     bulkConfirm,
     bulkRemind,
   }

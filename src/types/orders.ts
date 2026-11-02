@@ -19,6 +19,9 @@ export type CodPaymentStatus = 'paid' | 'partial' | 'unpaid'
 /** Statut de l'envoi de la conversion « Purchase » à Meta (Chantier 5 · API de conversions). */
 export type CapiPurchaseStatus = 'pending' | 'sent' | 'failed' | 'skipped'
 
+/** Why a conversion was skipped (`capiSkipReason`). */
+export type CapiSkipReason = 'test' | 'cancelled' | 'disabled' | 'too_old'
+
 /**
  * Champs opérationnels partagés par la liste et le détail. Tous optionnels :
  * une commande non encore confirmée n'a pas encore d'`operationalStatus`.
@@ -134,6 +137,12 @@ export interface OrderDetail extends OrderOperationalFields {
   capiPurchaseSentAt?: string
   capiEventId?: string
   capiPurchaseError?: string
+  /** Set while `capiPurchaseStatus` is `skipped`; cleared once the conversion is resent. */
+  capiSkipReason?: CapiSkipReason
+  /** Final failure date-time; only with `capiPurchaseStatus: 'failed'`. */
+  capiPurchaseFailedAt?: string
+  /** Only with `capiPurchaseStatus: 'failed'`: `true` = certain refusal by Meta, otherwise the failure is ambiguous. */
+  capiPurchaseFailureDefinitive?: boolean
   /** Valeur envoyée à Meta, en euros. */
   capiValueEur?: number
   fbclid?: string
@@ -172,6 +181,7 @@ export type OrderEventType =
   | 'capi_purchase_sent'
   | 'capi_purchase_failed'
   | 'capi_purchase_skipped'
+  | 'capi_purchase_resend_requested'
   | 'phone_mismatch'
 
 /** Événement d'audit d'une transition de commande (`GET /orders/:id` → `events`). */
@@ -224,6 +234,8 @@ export interface OrderActionCapabilities {
   canReturn: boolean
   /** Appel sans réponse : remet la commande en file « À traiter » (Lot 0 · F15). */
   canMarkUnreachable: boolean
+  /** Failed or skipped Meta conversion that an admin may resend (ignores the user's role). */
+  canResendCapi: boolean
 }
 
 /** Source de confirmation déclarée par un agent (`POST /orders/:id/confirm`). */
@@ -298,6 +310,7 @@ export function orderActionCapabilities(
         canRemind: true,
         canCancel: !operationalLocked,
         canMarkUnreachable: true,
+        canResendCapi: false,
         ...operational,
       }
     case 'confirmed':
@@ -306,10 +319,11 @@ export function orderActionCapabilities(
         canRemind: false,
         canCancel: !operationalLocked,
         canMarkUnreachable: false,
+        canResendCapi: false,
         ...operational,
       }
     case 'cancelled':
     default:
-      return { canConfirm: false, canRemind: false, canCancel: false, canMarkUnreachable: false, ...operational }
+      return { canConfirm: false, canRemind: false, canCancel: false, canMarkUnreachable: false, canResendCapi: false, ...operational }
   }
 }

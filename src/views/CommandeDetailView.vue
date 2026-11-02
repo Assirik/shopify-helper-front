@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import { useAuthStore } from '@/stores/auth'
 import { useOrdersStore } from '@/stores/orders'
 import { useCouriersStore } from '@/stores/couriers'
 import { useCarriersStore } from '@/stores/carriers'
@@ -43,6 +44,7 @@ import ConfirmOrderDialog from '@/components/ConfirmOrderDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const store = useOrdersStore()
 const couriersStore = useCouriersStore()
 const carriersStore = useCarriersStore()
@@ -59,6 +61,7 @@ const deliverOpen = ref(false)
 const failureOpen = ref(false)
 const returnOpen = ref(false)
 const confirmOpen = ref(false)
+const resendCapiOpen = ref(false)
 const unreachableOpen = ref(false)
 const noteText = ref('')
 const NOTE_MAX_LENGTH = 5000
@@ -79,6 +82,7 @@ const capabilities = computed(() => {
     canMarkFailed: false,
     canReturn: false,
     canMarkUnreachable: false,
+    canResendCapi: false,
   }
 })
 const actionLoading = computed(() => (detail.value ? store.mutatingIds.includes(detail.value.id) : false))
@@ -118,14 +122,19 @@ function skipReasonLabel(event: OrderEvent): string | undefined {
   const reason = event.metadata?.reason
   return typeof reason === 'string' && reason ? lookupMeta(capiSkipReasonMeta, reason).label : undefined
 }
-// Motif de la dernière conversion ignorée, lu dans l'historique (l'ordre de l'API n'est pas supposé).
-const capiSkipReason = computed(() => {
+// Skip reason: the order field first, else the latest capi_purchase_skipped event (API order not assumed).
+const capiSkipReasonLabel = computed(() => {
   if (detail.value?.capiPurchaseStatus !== 'skipped') return undefined
+  const reason = detail.value.capiSkipReason
+  if (typeof reason === 'string' && reason) return lookupMeta(capiSkipReasonMeta, reason).label
   const latest = detailEvents.value
     .filter((event) => event.type === 'capi_purchase_skipped')
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
   return latest ? skipReasonLabel(latest) : undefined
 })
+
+// Resend is an admin action: the API capability ignores the role, so both are required.
+const canResendCapi = computed(() => auth.isAdmin && capabilities.value.canResendCapi)
 
 const hasAdOrigin = computed(() => {
   const order = detail.value
@@ -193,6 +202,21 @@ async function submitConfirmation(source: AdminConfirmationSource) {
     // After a 409 refusal the detail was reloaded: close the dialog if the reload failed (no order left
     // to confirm) or the order can no longer be confirmed. The error message stays.
     if (!detail.value || !capabilities.value.canConfirm) confirmOpen.value = false
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
+async function submitResendCapi() {
+  // Vuetify's `loading` does not block Enter/Space on the focused button: guard against a double send.
+  if (!detail.value || actionLoading.value) return
+  try {
+    await store.resendCapiPurchase(detail.value.id)
+    resendCapiOpen.value = false
+    snackbar.value = { show: true, text: 'Conversion remise en file d’envoi.', color: 'success' }
+  } catch (cause) {
+    // After a 409 refusal the detail was reloaded: close the dialog if the reload failed or the
+    // conversion can no longer be resent. The error message stays.
+    if (!detail.value || !canResendCapi.value) resendCapiOpen.value = false
     snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
 }
@@ -668,7 +692,7 @@ onMounted(() => {
               <dl class="info-list">
                 <div v-if="detail.capiPurchaseSentAt"><dt>Envoyée le</dt><dd>{{ formatDateTime(detail.capiPurchaseSentAt) }}</dd></div>
                 <div v-if="capiValueLabel"><dt>Valeur envoyée</dt><dd>{{ capiValueLabel }}</dd></div>
-                <div v-if="capiSkipReason"><dt>Motif</dt><dd class="text-right">{{ capiSkipReason }}</dd></div>
+                <div v-if="capiSkipReasonLabel"><dt>Motif</dt><dd class="text-right">{{ capiSkipReasonLabel }}</dd></div>
               </dl>
               <v-alert
                 v-if="detail.capiPurchaseStatus === 'failed'"
@@ -679,6 +703,18 @@ onMounted(() => {
               >
                 <span class="text-caption text-break">{{ hasText(detail.capiPurchaseError) ? detail.capiPurchaseError : 'Erreur inconnue' }}</span>
               </v-alert>
+              <v-btn
+                v-if="canResendCapi"
+                block
+                variant="tonal"
+                color="primary"
+                prepend-icon="mdi-send-clock-outline"
+                class="mt-3"
+                :loading="actionLoading"
+                @click="resendCapiOpen = true"
+              >
+                Renvoyer la conversion
+              </v-btn>
             </v-card-text>
           </v-card>
 
@@ -1033,6 +1069,25 @@ onMounted(() => {
       :submitting="actionLoading"
       @confirm="submitConfirmation"
     />
+
+    <v-dialog v-model="resendCapiOpen" max-width="460" persistent>
+      <v-card>
+        <v-card-title class="d-flex align-center ga-3">
+          <v-avatar color="primary" variant="tonal" rounded="lg" size="40">
+            <v-icon icon="mdi-send-clock-outline" />
+          </v-avatar>
+          Renvoyer la conversion
+        </v-card-title>
+        <v-card-text class="text-body-2">
+          La conversion Meta de la commande {{ detail?.shopifyOrderName }} sera remise en file d’envoi.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="actionLoading" @click="resendCapiOpen = false">Retour</v-btn>
+          <v-btn color="primary" :loading="actionLoading" @click="submitResendCapi">Renvoyer</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <OrderReasonDialog
       v-model="unreachableOpen"

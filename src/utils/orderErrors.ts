@@ -40,6 +40,12 @@ const ORDER_ACTION_MESSAGES: Record<string, string> = {
   [CALL_REQUIRED_CODE]: 'Cette commande doit être confirmée par appel.',
   InvalidConfirmationSource: 'Source de confirmation invalide.',
   OrderUnreachableNotAllowed: 'Seule une commande en attente de confirmation peut être marquée injoignable.',
+  AdminRequired: 'Cette action est réservée aux administrateurs.',
+  CapiPurchaseAlreadySent: 'La conversion a déjà été envoyée à Meta.',
+  CapiPurchaseNotResendable: 'Cette conversion ne peut pas être renvoyée.',
+  CapiPurchaseTooOld: 'Commande trop ancienne : Meta refuserait la conversion (plus de 7 jours).',
+  CapiPurchaseMayHaveBeenReceived: 'Meta a peut-être déjà reçu cette conversion : la renvoyer créerait un doublon.',
+  CapiDisabled: 'L’envoi à Meta est désactivé.',
   NoteTextRequired: 'La note est vide.',
   NoteTextTooLong: 'La note est trop longue (5 000 caractères maximum).',
 }

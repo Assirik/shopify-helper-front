@@ -154,7 +154,7 @@ export const capiPurchaseStatusMeta: Record<string, StatusMeta> = {
   skipped: { label: 'Ignorée', color: 'neutral', icon: 'mdi-debug-step-over' },
 }
 
-/** Motif d'une conversion ignorée (métadonnée `reason` de l'événement `capi_purchase_skipped`). */
+/** Reason a conversion was skipped: `Order.capiSkipReason`, or the `reason` metadata of a `capi_purchase_skipped` event. */
 export const capiSkipReasonMeta: Record<string, StatusMeta> = {
   test: { label: 'Commande de test', color: 'neutral' },
   cancelled: { label: 'Commande annulée ou non confirmée', color: 'neutral' },
@@ -182,6 +182,7 @@ export const orderEventTypeMeta: Record<string, StatusMeta> = {
   capi_purchase_sent: { label: 'Conversion Meta envoyée', color: 'success', icon: 'mdi-send-check-outline' },
   capi_purchase_failed: { label: 'Conversion Meta en échec', color: 'error', icon: 'mdi-alert-circle-outline' },
   capi_purchase_skipped: { label: 'Conversion Meta ignorée', color: 'neutral', icon: 'mdi-debug-step-over' },
+  capi_purchase_resend_requested: { label: 'Renvoi de la conversion Meta demandé', color: 'warning', icon: 'mdi-send-clock-outline' },
   phone_mismatch: { label: 'Numéro WhatsApp différent', color: 'warning', icon: 'mdi-phone-alert-outline' },
 }
 
