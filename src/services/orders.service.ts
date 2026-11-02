@@ -82,6 +82,12 @@ export const ordersService = {
     return data
   },
 
+  /** Queues a failed or skipped Meta conversion again (admin only); 202 with the refreshed order. */
+  async resendCapiPurchase(orderId: string) {
+    const { data } = await api.post(`/orders/${orderId}/capi-purchase/resend`)
+    return data
+  },
+
   async reconciliation(params: ReconciliationParams) {
     const { data } = await api.get<ReconciliationResponse>('/orders/reconciliation', { params })
     return data
