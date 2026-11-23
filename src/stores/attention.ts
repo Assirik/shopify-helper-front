@@ -2,6 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { attentionService } from '@/services/attention.service'
 import { toApiFailure } from '@/services/errors'
+import { requiresCallConfirmation } from '@/constants/status'
 import type {
   AttentionCounts,
   AttentionOrder,
@@ -9,6 +10,7 @@ import type {
   BulkOrderResult,
   Pagination,
 } from '@/types/attention'
+import type { AdminConfirmationSource } from '@/types/orders'
 
 export type AttentionFilter = 'all' | AttentionReason
 
@@ -18,6 +20,9 @@ const emptyCounts = (): AttentionCounts => ({
   sms_only: 0,
   invalid_number: 0,
   late_confirm: 0,
+  unreachable: 0,
+  phone_mismatch: 0,
+  notification_not_scheduled: 0,
 })
 
 const emptyPagination = (): Pagination => ({ page: 1, limit: 20, total: 0, pages: 0 })
@@ -34,7 +39,18 @@ export const useAttentionStore = defineStore('attention', () => {
   let requestSequence = 0
 
   const selectedOrders = computed(() => items.value.filter(order => selectedIds.value.includes(order.id)))
-  const selectedConfirmableIds = computed(() => selectedOrders.value.filter(order => order.capabilities.canConfirm).map(order => order.id))
+  // « Numéro différent » est exclu de la confirmation groupée : elle exige un appel au client,
+  // commande par commande (fenêtre « Par appel »). Mieux vaut ignorer ces lignes que confirmer
+  // en masse une commande dont le message vient d'un autre numéro.
+  const selectedConfirmableIds = computed(() =>
+    selectedOrders.value
+      .filter(order => order.capabilities.canConfirm && !requiresCallConfirmation(order))
+      .map(order => order.id),
+  )
+  // Only orders that can still be confirmed count: an already confirmed order has nothing left to call about.
+  const selectedPhoneMismatchCount = computed(
+    () => selectedOrders.value.filter(order => order.capabilities.canConfirm && requiresCallConfirmation(order)).length,
+  )
   const selectedRemindableIds = computed(() => selectedOrders.value.filter(order => order.capabilities.canRemind).map(order => order.id))
 
   function setMutating(orderIds: string[], active: boolean) {
@@ -104,12 +120,18 @@ export const useAttentionStore = defineStore('attention', () => {
     try {
       await action()
       await fetchQueue()
+    } catch (cause) {
+      // 409 refusal: the order changed server-side (e.g. flagged "phone mismatch" while the screen
+      // was open). Reload so the row does not stay stale.
+      if (toApiFailure(cause).status === 409) await fetchQueue()
+      throw cause
     } finally {
       setMutating([orderId], false)
     }
   }
 
-  const confirm = (orderId: string) => runUnitAction(orderId, () => attentionService.confirm(orderId))
+  const confirm = (orderId: string, source?: AdminConfirmationSource) =>
+    runUnitAction(orderId, () => attentionService.confirm(orderId, source))
   const remind = (orderId: string) => runUnitAction(orderId, () => attentionService.remind(orderId))
   const cancel = (orderId: string, reason: string) => runUnitAction(orderId, () => attentionService.cancel(orderId, reason))
 
@@ -140,6 +162,7 @@ export const useAttentionStore = defineStore('attention', () => {
     selectedIds,
     selectedOrders,
     selectedConfirmableIds,
+    selectedPhoneMismatchCount,
     selectedRemindableIds,
     fetchQueue,
     fetchCounts,

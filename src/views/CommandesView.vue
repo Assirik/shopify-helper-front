@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import { useDisplay } from 'vuetify'
 import { useOrdersStore } from '@/stores/orders'
 import {
   orderActionCapabilities,
+  type AdminConfirmationSource,
   type OrderActionCapabilities,
   type OrderListItem,
 } from '@/types/orders'
@@ -12,31 +14,72 @@ import {
   customerConfirmationStatusMeta,
   notificationStatusMeta,
   operationalStatusMeta,
+  phoneMismatchMeta,
+  PHONE_MISMATCH_REASON,
+  requiresCallConfirmation,
 } from '@/constants/status'
 import { formatAmount, formatDateTime, formatNullable, formatPhone } from '@/utils/format'
 import { orderActionErrorMessage } from '@/utils/orderErrors'
 import { bulkSummary } from '@/utils/bulkSummary'
 import StatusChip from '@/components/StatusChip.vue'
 import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
+import ConfirmOrderDialog from '@/components/ConfirmOrderDialog.vue'
+import OrderCard from '@/components/OrderCard.vue'
 
 const store = useOrdersStore()
 const router = useRouter()
 const route = useRoute()
 const { items, pagination, filters, loading, errorCode, selectedIds } = storeToRefs(store)
 
+// Vue tableau ou cartes : même source (store), seul le rendu change. Le choix est
+// mémorisé ; sans choix enregistré, les cartes sont le défaut sur mobile (< 600 px).
+type ViewMode = 'table' | 'cards'
+const VIEW_MODE_KEY = 'assirik.helpdesk.ordersViewMode'
+const { xs } = useDisplay()
+
+function initialViewMode(): ViewMode {
+  const saved = localStorage.getItem(VIEW_MODE_KEY)
+  if (saved === 'table' || saved === 'cards') return saved
+  return xs.value ? 'cards' : 'table'
+}
+
+const viewMode = ref<ViewMode>(initialViewMode())
+watch(viewMode, (mode) => localStorage.setItem(VIEW_MODE_KEY, mode))
+
+const pageSelected = computed(
+  () => items.value.length > 0 && items.value.every((order) => selectedIds.value.includes(order.id)),
+)
+const pagePartiallySelected = computed(() => selectedIds.value.length > 0 && !pageSelected.value)
+
+function toggleSelected(orderId: string, selected: boolean) {
+  selectedIds.value = selected
+    ? [...new Set([...selectedIds.value, orderId])]
+    : selectedIds.value.filter((id) => id !== orderId)
+}
+
+function togglePageSelection(selected: boolean) {
+  selectedIds.value = selected ? items.value.map((order) => order.id) : []
+}
+
 const snackbar = ref({ show: false, text: '', color: 'neutral' })
 const pendingCancellation = ref<OrderListItem | null>(null)
+// Confirmation unitaire : même dialogue que la fiche (source appel / autre).
+const pendingConfirmation = ref<OrderListItem | null>(null)
 
-// Filtres locaux (appliqués au store via applyFilters).
-const orderNameInput = ref('')
-const phoneInput = ref('')
-const confirmationStatus = ref<string | null>(null)
-const operationalStatus = ref<string | null>(null)
-const notificationStatus = ref<string | null>(null)
-const codFilter = ref<boolean | null>(null)
+// Filtres locaux (appliqués au store via applyFilters). Initialisés depuis le store :
+// au retour du détail, les champs reflètent les filtres toujours appliqués à la liste.
+const orderNameInput = ref(filters.value.orderName)
+const phoneInput = ref(filters.value.phone)
+const confirmationStatus = ref<string | null>(filters.value.customerConfirmationStatus)
+const operationalStatus = ref<string | null>(filters.value.operationalStatus)
+const notificationStatus = ref<string | null>(filters.value.status)
+const codFilter = ref<boolean | null>(filters.value.cod)
 // Désencombrement : les commandes terminées (livrées ET payées) sont masquées par
 // défaut. Le switch les fait réapparaître sans rien supprimer.
-const showCompleted = ref(false)
+const showCompleted = ref(!filters.value.hideCompleted)
+// Même principe pour les annulées. Filtrer explicitement sur « Annulée » les affiche
+// quand même : le backend ignore alors le masquage.
+const showCancelled = ref(!filters.value.hideCancelled)
 
 const confirmationOptions = Object.entries(customerConfirmationStatusMeta).map(([value, meta]) => ({
   value,
@@ -80,7 +123,9 @@ const hasActiveFilters = computed(
     operationalStatus.value !== null ||
     notificationStatus.value !== null ||
     codFilter.value !== null ||
-    showCompleted.value,
+    showCompleted.value ||
+    showCancelled.value ||
+    Boolean(filters.value.search),
 )
 
 function applyFilters() {
@@ -92,6 +137,7 @@ function applyFilters() {
     status: notificationStatus.value,
     cod: codFilter.value,
     hideCompleted: !showCompleted.value,
+    hideCancelled: !showCancelled.value,
   })
 }
 
@@ -103,12 +149,68 @@ function resetFilters() {
   notificationStatus.value = null
   codFilter.value = null
   showCompleted.value = false
+  showCancelled.value = false
   store.resetFilters()
   void store.fetchList()
+  if (route.query.search) void router.replace({ query: { ...route.query, search: undefined } })
+}
+
+/**
+ * Recherche globale (barre du haut) : elle cherche partout, donc elle remplace les
+ * autres filtres et inclut les commandes terminées et annulées. Les filtres restent
+ * ensuite utilisables pour affiner.
+ */
+function applySearch(search: string) {
+  orderNameInput.value = ''
+  phoneInput.value = ''
+  confirmationStatus.value = null
+  operationalStatus.value = null
+  notificationStatus.value = null
+  codFilter.value = null
+  showCompleted.value = Boolean(search)
+  showCancelled.value = Boolean(search)
+  void store.applyFilters({
+    orderName: '',
+    phone: '',
+    search,
+    customerConfirmationStatus: null,
+    operationalStatus: null,
+    status: null,
+    cod: null,
+    hideCompleted: !search,
+    hideCancelled: !search,
+  })
+}
+
+// Rappel, à côté de la recherche active, des commandes habituellement masquées qu'elle inclut.
+const includedInSearch = computed(() => {
+  const completed = !filters.value.hideCompleted
+  const cancelled = !filters.value.hideCancelled
+  if (completed && cancelled) return 'Terminées et annulées incluses'
+  if (completed) return 'Terminées incluses'
+  if (cancelled) return 'Annulées incluses'
+  return ''
+})
+
+function clearSearch() {
+  void router.replace({ query: { ...route.query, search: undefined } })
+}
+
+// Déjà sur la page : une nouvelle recherche ne remonte pas le composant.
+watch(
+  () => route.query.search,
+  (value) => {
+    const search = typeof value === 'string' ? value.trim() : ''
+    if (search !== filters.value.search) applySearch(search)
+  },
+)
+
+function openOrder(order: OrderListItem) {
+  void router.push({ name: 'commande-detail', params: { id: order.id } })
 }
 
 function openDetail(_event: MouseEvent, row: { item: OrderListItem }) {
-  void router.push({ name: 'commande-detail', params: { id: row.item.id } })
+  openOrder(row.item)
 }
 
 function regionLabel(order: OrderListItem) {
@@ -119,11 +221,35 @@ const cancellationSubmitting = computed(() =>
   pendingCancellation.value ? store.mutatingIds.includes(pendingCancellation.value.id) : false,
 )
 
-async function confirmOrder(order: OrderListItem) {
+const confirmationSubmitting = computed(() =>
+  pendingConfirmation.value ? store.mutatingIds.includes(pendingConfirmation.value.id) : false,
+)
+
+// « Numéro différent » : la confirmation passe obligatoirement par la fenêtre « Par appel ».
+const confirmationCallOnly = computed(
+  () => (pendingConfirmation.value ? requiresCallConfirmation(pendingConfirmation.value) : false),
+)
+const confirmationPhone = computed(() => {
+  const phone = pendingConfirmation.value?.customerPhoneE164
+  return phone ? formatPhone(phone) : undefined
+})
+
+function confirmOrder(order: OrderListItem) {
+  pendingConfirmation.value = order
+}
+
+async function submitConfirmation(source: AdminConfirmationSource) {
+  const order = pendingConfirmation.value
+  if (!order) return
   try {
-    await store.confirm(order.id)
+    await store.confirm(order.id, source)
+    pendingConfirmation.value = null
     snackbar.value = { show: true, text: `${order.shopifyOrderName} confirmée.`, color: 'success' }
   } catch (cause) {
+    // The list may have been reloaded after a 409 refusal: the dialog follows the fresh row (call-only
+    // mode), or closes if the order is gone or can no longer be confirmed. The error message stays.
+    const refreshed = store.items.find(item => item.id === order.id)
+    pendingConfirmation.value = refreshed && rowCapabilities(refreshed).canConfirm ? refreshed : null
     snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
 }
@@ -180,6 +306,12 @@ async function bulkRemindOrders() {
 }
 
 onMounted(() => {
+  const search = route.query.search
+  if (typeof search === 'string' && search.trim()) {
+    applySearch(search.trim())
+    return
+  }
+
   // Pré-remplissage depuis la navigation Clients ou Dashboard.
   const phone = route.query.phone
   const status = route.query.customerConfirmationStatus
@@ -207,24 +339,38 @@ onMounted(() => {
 
 <template>
   <section class="orders-view">
-    <header class="d-flex align-start justify-space-between ga-4 mb-5">
+    <header class="d-flex align-start justify-space-between flex-wrap ga-4 mb-5">
       <div>
         <h1 class="text-h5 font-weight-bold mb-1">Commandes</h1>
         <p class="text-body-2 text-medium-emphasis mb-0">
           Toutes les commandes Shopify, filtrables par statut et numéro.
         </p>
       </div>
-      <v-btn
-        prepend-icon="mdi-refresh"
-        variant="outlined"
-        border="sm opacity-25"
-        rounded="lg"
-        :loading="loading"
-        size="large"
-        @click="store.fetchList"
-      >
-        <span class="text-uppercase">Actualiser</span>
-      </v-btn>
+      <div class="d-flex align-center ga-3 flex-shrink-0">
+        <v-btn-toggle
+          v-model="viewMode"
+          mandatory
+          density="comfortable"
+          variant="outlined"
+          divided
+          rounded="lg"
+          aria-label="Mode d’affichage"
+        >
+          <v-btn value="table" icon="mdi-table" aria-label="Vue tableau" />
+          <v-btn value="cards" icon="mdi-view-grid" aria-label="Vue cartes" />
+        </v-btn-toggle>
+        <v-btn
+          prepend-icon="mdi-refresh"
+          variant="outlined"
+          border="sm opacity-25"
+          rounded="lg"
+          :loading="loading"
+          size="large"
+          @click="store.fetchList"
+        >
+          <span class="text-uppercase">Actualiser</span>
+        </v-btn>
+      </div>
     </header>
 
     <v-card border flat rounded="lg" class="pa-4 mb-4">
@@ -308,9 +454,39 @@ onMounted(() => {
               </span>
             </template>
           </v-switch>
+          <v-switch
+            v-model="showCancelled"
+            color="primary"
+            density="compact"
+            hide-details
+            inset
+            class="show-completed-switch ms-4"
+            @update:model-value="applyFilters"
+          >
+            <template #label>
+              <span class="d-inline-flex align-center ga-1 text-body-2">
+                <v-icon icon="mdi-close-circle-outline" size="16" />
+                Afficher les annulées
+              </span>
+            </template>
+          </v-switch>
         </div>
       </div>
     </v-card>
+
+    <div v-if="filters.search" class="d-flex align-center flex-wrap ga-2 mb-3">
+      <v-chip
+        closable
+        color="primary"
+        variant="tonal"
+        prepend-icon="mdi-magnify"
+        close-label="Effacer la recherche"
+        @click:close="clearSearch"
+      >
+        Recherche : « {{ filters.search }} »
+      </v-chip>
+      <span v-if="includedInSearch" class="text-body-2 text-medium-emphasis">{{ includedInSearch }}</span>
+    </div>
 
     <v-progress-linear v-if="loading && !items.length" indeterminate color="primary" class="mb-3" />
 
@@ -350,6 +526,9 @@ onMounted(() => {
         >
           Relancer ({{ store.selectedRemindableIds.length }})
         </v-btn>
+        <span v-if="store.selectedPhoneMismatchCount" class="text-caption text-medium-emphasis">
+          {{ store.selectedPhoneMismatchCount }} « Numéro différent » : à confirmer une par une, par appel.
+        </span>
         <v-spacer />
         <v-btn
           icon="mdi-close"
@@ -365,10 +544,20 @@ onMounted(() => {
     <v-sheet v-if="!loading && !errorCode && !items.length" border rounded class="pa-10 text-center">
       <v-icon icon="mdi-cart-off" color="neutral" size="42" class="mb-3" />
       <p class="text-subtitle-1 font-weight-medium mb-1">Aucune commande</p>
-      <p class="text-body-2 text-medium-emphasis mb-0">Aucune commande ne correspond à ces filtres.</p>
+      <p v-if="filters.search" class="text-body-2 text-medium-emphasis mb-0">
+        Aucune commande ne correspond à « {{ filters.search }} ». Vérifiez l’orthographe ou cherchez un
+        numéro, un nom, un téléphone ou un article.
+      </p>
+      <p v-else class="text-body-2 text-medium-emphasis mb-0">Aucune commande ne correspond à ces filtres.</p>
     </v-sheet>
 
-    <v-card v-else-if="items.length" border flat rounded="lg" class="orders-table-card overflow-hidden">
+    <v-card
+      v-else-if="items.length && viewMode === 'table'"
+      border
+      flat
+      rounded="lg"
+      class="orders-table-card overflow-hidden"
+    >
       <v-data-table-server
         v-model="selectedIds"
         class="orders-table"
@@ -412,7 +601,18 @@ onMounted(() => {
         </template>
 
         <template #item.customerConfirmationStatus="{ item }">
-          <StatusChip :table="customerConfirmationStatusMeta" :value="item.customerConfirmationStatus" />
+          <div class="d-flex flex-column align-start ga-1 py-1">
+            <StatusChip :table="customerConfirmationStatusMeta" :value="item.customerConfirmationStatus" />
+            <v-chip
+              v-if="item.attentionReasonCode === PHONE_MISMATCH_REASON"
+              size="x-small"
+              variant="tonal"
+              :color="phoneMismatchMeta.color"
+              :prepend-icon="phoneMismatchMeta.icon"
+            >
+              {{ phoneMismatchMeta.label }}
+            </v-chip>
+          </div>
         </template>
 
         <template #item.operationalStatus="{ item }">
@@ -430,7 +630,7 @@ onMounted(() => {
 
         <template #item.actions="{ item }">
           <div class="d-flex justify-end ga-1" @click.stop>
-            <v-tooltip v-if="rowCapabilities(item).canConfirm" text="Confirmer" location="top">
+            <v-tooltip v-if="rowCapabilities(item).canConfirm" :text="requiresCallConfirmation(item) ? 'Confirmer par appel' : 'Confirmer'" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
@@ -477,6 +677,61 @@ onMounted(() => {
       </v-data-table-server>
     </v-card>
 
+    <div v-else-if="items.length">
+      <div class="d-flex align-center ga-2 mb-3 px-1">
+        <v-checkbox-btn
+          :model-value="pageSelected"
+          :indeterminate="pagePartiallySelected"
+          density="compact"
+          class="flex-grow-0"
+          aria-label="Sélectionner toute la page"
+          @update:model-value="togglePageSelection"
+        />
+        <span class="text-body-2">Toute la page</span>
+        <v-spacer />
+        <span class="text-body-2 text-medium-emphasis">{{ pagination.total }} commande(s)</span>
+      </div>
+
+      <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-3" />
+
+      <div class="orders-cards-grid">
+        <OrderCard
+          v-for="order in items"
+          :key="order.id"
+          :order="order"
+          :capabilities="rowCapabilities(order)"
+          :selected="selectedIds.includes(order.id)"
+          :loading="store.mutatingIds.includes(order.id)"
+          @update:selected="(value) => toggleSelected(order.id, value)"
+          @open="openOrder(order)"
+          @confirm="confirmOrder(order)"
+          @remind="remindOrder(order)"
+          @cancel="pendingCancellation = order"
+        />
+      </div>
+
+      <div class="d-flex align-center justify-center flex-wrap ga-4 mt-4">
+        <v-pagination
+          v-if="pagination.pages > 1"
+          :model-value="pagination.page"
+          :length="pagination.pages"
+          :total-visible="5"
+          density="comfortable"
+          rounded="lg"
+          @update:model-value="store.setPage"
+        />
+        <v-select
+          :model-value="pagination.limit"
+          :items="[10, 20, 50]"
+          label="Par page"
+          density="compact"
+          hide-details
+          class="per-page-select"
+          @update:model-value="store.setLimit"
+        />
+      </div>
+    </div>
+
     <v-snackbar v-model="snackbar.show" :timeout="3000" :color="snackbar.color" role="status">
       {{ snackbar.text }}
     </v-snackbar>
@@ -487,6 +742,16 @@ onMounted(() => {
       :submitting="cancellationSubmitting"
       @update:model-value="(value) => { if (!value) pendingCancellation = null }"
       @confirm="submitCancellation"
+    />
+
+    <ConfirmOrderDialog
+      :model-value="Boolean(pendingConfirmation)"
+      :order-name="pendingConfirmation?.shopifyOrderName"
+      :call-only="confirmationCallOnly"
+      :order-phone="confirmationPhone"
+      :submitting="confirmationSubmitting"
+      @update:model-value="(value) => { if (!value) pendingConfirmation = null }"
+      @confirm="submitConfirmation"
     />
   </section>
 </template>
@@ -520,6 +785,16 @@ onMounted(() => {
 
 .orders-table-card {
   min-height: 240px;
+}
+
+.orders-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.per-page-select {
+  flex: 0 0 120px;
 }
 
 .orders-table :deep(thead) {

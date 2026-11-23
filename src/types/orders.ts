@@ -16,6 +16,12 @@ export type DeliveryChannel = 'internal' | 'carrier'
 /** Statut d'encaissement COD. */
 export type CodPaymentStatus = 'paid' | 'partial' | 'unpaid'
 
+/** Statut de l'envoi de la conversion « Purchase » à Meta (Chantier 5 · API de conversions). */
+export type CapiPurchaseStatus = 'pending' | 'sent' | 'failed' | 'skipped'
+
+/** Why a conversion was skipped (`capiSkipReason`). */
+export type CapiSkipReason = 'test' | 'cancelled' | 'disabled' | 'too_old'
+
 /**
  * Champs opérationnels partagés par la liste et le détail. Tous optionnels :
  * une commande non encore confirmée n'a pas encore d'`operationalStatus`.
@@ -57,6 +63,13 @@ export interface OrderListItem extends OrderOperationalFields {
   customerConfirmationStatus: string
   notificationStatus: string
   createdAt: string
+  /** Motif « À traiter » courant (`phone_mismatch`…) ; absent hors file « À traiter ». */
+  attentionReasonCode?: string
+  /** Date ISO où un message de confirmation est arrivé d'un autre numéro ; jamais effacée. */
+  phoneMismatchAt?: string | null
+  /** Dernière note interne (Lot 0 · F16) — absente tant que le backend ne l'expose pas. */
+  lastNoteText?: string
+  lastNoteAt?: string
   /** Capabilities calculées par le backend (source de vérité). */
   capabilities?: OrderActionCapabilities
 }
@@ -111,6 +124,33 @@ export interface OrderDetail extends OrderOperationalFields {
   lastCustomerMessageText?: string
   lastCustomerMessageAt?: string
   lastCustomerMessageChannel?: string
+  /** Motif « À traiter » courant (`phone_mismatch`, `free_text`…) ; absent hors file « À traiter ». */
+  attentionReasonCode?: string
+  attentionReason?: string
+  /** Date ISO où un message de confirmation est arrivé d'un autre numéro ; jamais effacée. */
+  phoneMismatchAt?: string | null
+  /**
+   * Conversion Meta et origine publicitaire (Chantier 5). Tous facultatifs : absents tant que
+   * le backend ne les renvoie pas, ou pour une commande qui ne vient pas d'une publicité.
+   */
+  capiPurchaseStatus?: CapiPurchaseStatus
+  capiPurchaseSentAt?: string
+  capiEventId?: string
+  capiPurchaseError?: string
+  /** Set while `capiPurchaseStatus` is `skipped`; cleared once the conversion is resent. */
+  capiSkipReason?: CapiSkipReason
+  /** Final failure date-time; only with `capiPurchaseStatus: 'failed'`. */
+  capiPurchaseFailedAt?: string
+  /** Only with `capiPurchaseStatus: 'failed'`: `true` = certain refusal by Meta, otherwise the failure is ambiguous. */
+  capiPurchaseFailureDefinitive?: boolean
+  /** Valeur envoyée à Meta, en euros. */
+  capiValueEur?: number
+  fbclid?: string
+  adId?: string
+  campaignId?: string
+  adsetId?: string
+  utmSource?: string
+  utmMedium?: string
   createdAt: string
 }
 
@@ -137,6 +177,12 @@ export type OrderEventType =
   | 'delivery_failed'
   | 'returned'
   | 'payment_recorded'
+  | 'note'
+  | 'capi_purchase_sent'
+  | 'capi_purchase_failed'
+  | 'capi_purchase_skipped'
+  | 'capi_purchase_resend_requested'
+  | 'phone_mismatch'
 
 /** Événement d'audit d'une transition de commande (`GET /orders/:id` → `events`). */
 export interface OrderEvent {
@@ -186,7 +232,14 @@ export interface OrderActionCapabilities {
   canDeliver: boolean
   canMarkFailed: boolean
   canReturn: boolean
+  /** Appel sans réponse : remet la commande en file « À traiter » (Lot 0 · F15). */
+  canMarkUnreachable: boolean
+  /** Failed or skipped Meta conversion that an admin may resend (ignores the user's role). */
+  canResendCapi: boolean
 }
+
+/** Source de confirmation déclarée par un agent (`POST /orders/:id/confirm`). */
+export type AdminConfirmationSource = 'admin' | 'phone_call'
 
 /**
  * Payload d'expédition d'une commande (`POST /orders/:id/dispatch`).
@@ -252,11 +305,25 @@ export function orderActionCapabilities(
     case 'needs_attention':
     case 'sms_only':
     case 'expired':
-      return { canConfirm: true, canRemind: true, canCancel: !operationalLocked, ...operational }
+      return {
+        canConfirm: true,
+        canRemind: true,
+        canCancel: !operationalLocked,
+        canMarkUnreachable: true,
+        canResendCapi: false,
+        ...operational,
+      }
     case 'confirmed':
-      return { canConfirm: false, canRemind: false, canCancel: !operationalLocked, ...operational }
+      return {
+        canConfirm: false,
+        canRemind: false,
+        canCancel: !operationalLocked,
+        canMarkUnreachable: false,
+        canResendCapi: false,
+        ...operational,
+      }
     case 'cancelled':
     default:
-      return { canConfirm: false, canRemind: false, canCancel: false, ...operational }
+      return { canConfirm: false, canRemind: false, canCancel: false, canMarkUnreachable: false, canResendCapi: false, ...operational }
   }
 }

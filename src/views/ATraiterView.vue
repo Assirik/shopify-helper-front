@@ -4,9 +4,12 @@ import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAttentionStore, type AttentionFilter } from '@/stores/attention'
 import type { AttentionOrder, AttentionReason } from '@/types/attention'
+import type { AdminConfirmationSource } from '@/types/orders'
+import { lookupMeta, requiresCallConfirmation } from '@/constants/status'
 import { orderActionErrorMessage } from '@/utils/orderErrors'
 import { bulkSummary } from '@/utils/bulkSummary'
 import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
+import ConfirmOrderDialog from '@/components/ConfirmOrderDialog.vue'
 
 const store = useAttentionStore()
 const router = useRouter()
@@ -15,6 +18,11 @@ const snackbar = ref({ show: false, text: '', color: 'neutral' })
 const pendingCancellation = ref<AttentionOrder | null>(null)
 const cancellationSubmitting = computed(() =>
   pendingCancellation.value ? store.mutatingIds.includes(pendingCancellation.value.id) : false,
+)
+// « Numéro différent » : la confirmation passe par la fenêtre « Par appel », jamais directement.
+const pendingCall = ref<AttentionOrder | null>(null)
+const callSubmitting = computed(() =>
+  pendingCall.value ? store.mutatingIds.includes(pendingCall.value.id) : false,
 )
 const bulkLoading = computed(() => selectedIds.value.some(id => store.mutatingIds.includes(id)))
 
@@ -34,7 +42,13 @@ const reasons: Record<AttentionReason, { label: string; color: string }> = {
   sms_only: { label: 'SMS seul', color: 'info' },
   invalid_number: { label: 'Numéro invalide', color: 'error' },
   late_confirm: { label: 'Confirmation tardive', color: 'warning' },
+  unreachable: { label: 'Injoignable', color: 'primary' },
+  phone_mismatch: { label: 'Numéro différent', color: 'error' },
+  notification_not_scheduled: { label: 'Demande non envoyée', color: 'warning' },
 }
+
+// Un motif plus récent que ce front (valeur inconnue) garde un libellé de repli neutre.
+const reasonMeta = (reason: string) => lookupMeta(reasons, reason)
 
 const amountFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 })
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', {
@@ -59,10 +73,29 @@ function showDetail(_event: MouseEvent, row: { item: AttentionOrder }) {
 }
 
 async function confirmOrder(order: AttentionOrder) {
+  if (requiresCallConfirmation(order)) {
+    pendingCall.value = order
+    return
+  }
   try {
     await store.confirm(order.id)
     snackbar.value = { show: true, text: `${order.orderName} confirmée.`, color: 'success' }
   } catch (cause) {
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
+async function submitCallConfirmation(source: AdminConfirmationSource) {
+  const order = pendingCall.value
+  if (!order) return
+  try {
+    await store.confirm(order.id, source)
+    pendingCall.value = null
+    snackbar.value = { show: true, text: `${order.orderName} confirmée.`, color: 'success' }
+  } catch (cause) {
+    // After a 409 refusal the queue was reloaded: close the dialog if the order left it or is no longer confirmable.
+    const refreshed = store.items.find(item => item.id === order.id)
+    if (!refreshed || !refreshed.capabilities.canConfirm) pendingCall.value = null
     snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
 }
@@ -124,6 +157,9 @@ const filters: Array<{ key: AttentionFilter; label: string; color?: string, bord
   { key: 'sms_only', label: 'SMS seul', color: 'info' },
   { key: 'invalid_number', label: 'Numéro invalide', color: 'error' },
   { key: 'late_confirm', label: 'Confirmation tardive', color: 'warning' },
+  { key: 'unreachable', label: 'Injoignable', color: 'primary' },
+  { key: 'phone_mismatch', label: 'Numéro différent', color: 'error' },
+  { key: 'notification_not_scheduled', label: 'Demande non envoyée', color: 'warning' },
 ]
 
 const filterCount = (filter: AttentionFilter) => counts.value[filter]
@@ -217,6 +253,9 @@ onMounted(() => {
         >
           Relancer ({{ store.selectedRemindableIds.length }})
         </v-btn>
+        <span v-if="store.selectedPhoneMismatchCount" class="text-caption text-medium-emphasis">
+          {{ store.selectedPhoneMismatchCount }} « Numéro différent » : à confirmer une par une, par appel.
+        </span>
         <v-spacer />
         <v-btn
           icon="mdi-close"
@@ -287,8 +326,8 @@ onMounted(() => {
         </template>
 
         <template #item.reason="{ item }">
-          <v-chip :color="reasons[item.reason].color" size="small" variant="tonal" :border="`${reasons[item.reason].color} sm opacity-50`">
-            <strong>{{ reasons[item.reason].label }}x </strong>
+          <v-chip :color="reasonMeta(item.reason).color" size="small" variant="tonal" :border="`${reasonMeta(item.reason).color} sm opacity-50`">
+            <strong>{{ reasonMeta(item.reason).label }}x </strong>
           </v-chip>
         </template>
 
@@ -307,7 +346,7 @@ onMounted(() => {
 
         <template #item.actions="{ item }">
           <div class="d-flex justify-end ga-1" @click.stop>
-            <v-tooltip v-if="item.capabilities.canConfirm" text="Confirmer" location="top">
+            <v-tooltip v-if="item.capabilities.canConfirm" :text="requiresCallConfirmation(item) ? 'Confirmer par appel' : 'Confirmer'" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
@@ -357,6 +396,16 @@ onMounted(() => {
     <v-snackbar v-model="snackbar.show" :timeout="3000" :color="snackbar.color" role="status">
       {{ snackbar.text }}
     </v-snackbar>
+
+    <ConfirmOrderDialog
+      :model-value="Boolean(pendingCall)"
+      :order-name="pendingCall?.orderName"
+      :order-phone="pendingCall?.customerPhone"
+      call-only
+      :submitting="callSubmitting"
+      @update:model-value="(value) => { if (!value) pendingCall = null }"
+      @confirm="submitCallConfirmation"
+    />
 
     <CancelOrderDialog
       :model-value="Boolean(pendingCancellation)"

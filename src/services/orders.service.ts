@@ -1,5 +1,6 @@
 import api from '@/services/api'
 import type {
+  AdminConfirmationSource,
   BulkOrderResult,
   DeliverOrderPayload,
   DispatchOrderPayload,
@@ -16,9 +17,13 @@ export interface OrderListParams {
   operationalStatus?: string
   orderName?: string
   phone?: string
+  /** Recherche unifiée : n°, client, téléphone, email, tags, article (titre/SKU). */
+  search?: string
   cod?: boolean
   /** Exclut les commandes terminées (livrées ET intégralement encaissées). */
   hideCompleted?: boolean
+  /** Exclut les commandes annulées, sauf si un statut de confirmation est filtré. */
+  hideCancelled?: boolean
 }
 
 export const ordersService = {
@@ -32,8 +37,18 @@ export const ordersService = {
     return data
   },
 
-  async confirm(orderId: string) {
-    const { data } = await api.post(`/orders/${orderId}/confirm`)
+  async confirm(orderId: string, source?: AdminConfirmationSource) {
+    const { data } = await api.post(`/orders/${orderId}/confirm`, source ? { source } : undefined)
+    return data
+  },
+
+  async addNote(orderId: string, text: string) {
+    const { data } = await api.post(`/orders/${orderId}/notes`, { text })
+    return data
+  },
+
+  async markUnreachable(orderId: string, note?: string) {
+    const { data } = await api.post(`/orders/${orderId}/mark-unreachable`, note ? { note } : undefined)
     return data
   },
 
@@ -64,6 +79,12 @@ export const ordersService = {
 
   async markReturned(orderId: string, reason: string) {
     const { data } = await api.post(`/orders/${orderId}/return`, { reason })
+    return data
+  },
+
+  /** Queues a failed or skipped Meta conversion again (admin only); 202 with the refreshed order. */
+  async resendCapiPurchase(orderId: string) {
+    const { data } = await api.post(`/orders/${orderId}/capi-purchase/resend`)
     return data
   },
 

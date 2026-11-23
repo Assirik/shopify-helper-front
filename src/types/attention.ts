@@ -1,4 +1,11 @@
-export type AttentionReason = 'free_text' | 'sms_only' | 'invalid_number' | 'late_confirm'
+export type AttentionReason =
+  | 'free_text'
+  | 'sms_only'
+  | 'invalid_number'
+  | 'late_confirm'
+  | 'unreachable'
+  | 'phone_mismatch'
+  | 'notification_not_scheduled'
 
 export type CustomerConfirmationStatus =
   | 'pending'
@@ -26,6 +33,8 @@ export interface AttentionOrder {
   }
   isCashOnDelivery: boolean
   reason: AttentionReason
+  /** Date ISO où un message de confirmation est arrivé d'un autre numéro ; jamais effacée. */
+  phoneMismatchAt?: string | null
   lastCustomerMessage: string
   receivedAt: string
   customerConfirmationStatus: CustomerConfirmationStatus
@@ -38,6 +47,9 @@ export interface AttentionCounts {
   sms_only: number
   invalid_number: number
   late_confirm: number
+  unreachable: number
+  phone_mismatch: number
+  notification_not_scheduled: number
 }
 
 export interface Pagination {

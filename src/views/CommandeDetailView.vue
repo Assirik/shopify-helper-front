@@ -1,19 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import { useAuthStore } from '@/stores/auth'
 import { useOrdersStore } from '@/stores/orders'
 import { useCouriersStore } from '@/stores/couriers'
 import { useCarriersStore } from '@/stores/carriers'
 import {
   orderActionCapabilities,
+  type AdminConfirmationSource,
   type DeliverOrderPayload,
   type DispatchOrderPayload,
+  type OrderEvent,
   type OrderMessage,
 } from '@/types/orders'
 import {
+  capiPurchaseStatusMeta,
+  capiSkipReasonMeta,
   channelMeta,
   codPaymentStatusMeta,
+  confirmationSourceMeta,
   customerConfirmationStatusMeta,
   deliveryChannelMeta,
   lookupMeta,
@@ -22,6 +28,9 @@ import {
   orderEventTypeMeta,
   templatePurposeMeta,
   formatProvider,
+  isDeliberatelyNotSent,
+  requiresCallConfirmation,
+  notSentMessageMeta,
 } from '@/constants/status'
 import { formatAmount, formatDateTime, formatNullable, formatPhone } from '@/utils/format'
 import { orderActionErrorMessage, messageRetryErrorMessage } from '@/utils/orderErrors'
@@ -31,9 +40,11 @@ import CancelOrderDialog from '@/components/CancelOrderDialog.vue'
 import DispatchOrderDialog from '@/components/DispatchOrderDialog.vue'
 import DeliverOrderDialog from '@/components/DeliverOrderDialog.vue'
 import OrderReasonDialog from '@/components/OrderReasonDialog.vue'
+import ConfirmOrderDialog from '@/components/ConfirmOrderDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const store = useOrdersStore()
 const couriersStore = useCouriersStore()
 const carriersStore = useCarriersStore()
@@ -49,6 +60,11 @@ const dispatchOpen = ref(false)
 const deliverOpen = ref(false)
 const failureOpen = ref(false)
 const returnOpen = ref(false)
+const confirmOpen = ref(false)
+const resendCapiOpen = ref(false)
+const unreachableOpen = ref(false)
+const noteText = ref('')
+const NOTE_MAX_LENGTH = 5000
 const retryingIds = ref<string[]>([])
 
 // Capabilities : l'API fait foi ; repli local tant que la réponse ne les porte pas.
@@ -65,6 +81,8 @@ const capabilities = computed(() => {
     canDeliver: false,
     canMarkFailed: false,
     canReturn: false,
+    canMarkUnreachable: false,
+    canResendCapi: false,
   }
 })
 const actionLoading = computed(() => (detail.value ? store.mutatingIds.includes(detail.value.id) : false))
@@ -83,6 +101,65 @@ const assignedCourierName = computed(() => {
 const assignedCarrierName = computed(() => {
   const id = detail.value?.assignedCarrierId
   return id ? carriersById.value.get(id)?.name : undefined
+})
+
+// Conversion Meta et origine publicitaire (Chantier 5) : champs facultatifs, les cartes
+// n'apparaissent que si le backend les renvoie.
+const euroFormatter = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' })
+// Texte présent : chaîne non vide après trim, ou nombre fini. Tout autre type (objet, booléen…)
+// venu d'un backend plus récent est ignoré sans erreur.
+const hasText = (value: unknown): boolean =>
+  typeof value === 'string' ? Boolean(value.trim()) : typeof value === 'number' && Number.isFinite(value)
+
+const hasCapiStatus = computed(() => Boolean(detail.value?.capiPurchaseStatus))
+const capiValueLabel = computed(() => {
+  const value = detail.value?.capiValueEur
+  return typeof value === 'number' && Number.isFinite(value) ? euroFormatter.format(value) : undefined
+})
+
+function skipReasonLabel(event: OrderEvent): string | undefined {
+  if (event.type !== 'capi_purchase_skipped') return undefined
+  const reason = event.metadata?.reason
+  return typeof reason === 'string' && reason ? lookupMeta(capiSkipReasonMeta, reason).label : undefined
+}
+// Skip reason: the order field first, else the latest capi_purchase_skipped event (API order not assumed).
+const capiSkipReasonLabel = computed(() => {
+  if (detail.value?.capiPurchaseStatus !== 'skipped') return undefined
+  const reason = detail.value.capiSkipReason
+  if (typeof reason === 'string' && reason) return lookupMeta(capiSkipReasonMeta, reason).label
+  const latest = detailEvents.value
+    .filter((event) => event.type === 'capi_purchase_skipped')
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+  return latest ? skipReasonLabel(latest) : undefined
+})
+
+// Resend is an admin action: the API capability ignores the role, so both are required.
+const canResendCapi = computed(() => auth.isAdmin && capabilities.value.canResendCapi)
+
+const hasAdOrigin = computed(() => {
+  const order = detail.value
+  if (!order) return false
+  return [order.campaignId, order.adsetId, order.adId, order.utmSource, order.utmMedium, order.fbclid].some(hasText)
+})
+
+// Messages volontairement non envoyés : ni échec, ni « Réessayer », hors du compteur d'échecs.
+const failedMessageCount = computed(
+  () => detailMessages.value.filter((message) => message.status === 'failed' && !isDeliberatelyNotSent(message)).length,
+)
+
+// « Numéro différent » : le message vient d'un autre numéro que celui de la commande.
+const isPhoneMismatch = computed(() => detail.value?.attentionReasonCode === 'phone_mismatch')
+// Le marqueur `phoneMismatchAt` survit au changement de motif : la confirmation reste réservée à l'appel.
+const isCallRequired = computed(() => (detail.value ? requiresCallConfirmation(detail.value) : false))
+const phoneMismatchSender = computed(() => {
+  const latest = detailEvents.value
+    .filter((event) => event.type === 'phone_mismatch')
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+  const sender = latest?.metadata?.senderE164
+  return {
+    phone: typeof sender === 'string' && sender ? sender : undefined,
+    detectedAt: latest?.createdAt,
+  }
 })
 
 const lineItems = computed(() => detail.value?.lineItems ?? [])
@@ -105,11 +182,67 @@ function goBack() {
   void router.push({ name: 'commandes' })
 }
 
-async function confirmOrder() {
+// Préc/suiv dans l'ordre de la liste filtrée. Accès direct par URL ou commande absente
+// de la page courante : on masque la navigation plutôt que d'afficher des boutons inertes.
+const showNeighborNav = computed(() => store.isInList(orderId.value))
+const previousOrderId = computed(() => store.prevId(orderId.value))
+const nextOrderId = computed(() => store.nextId(orderId.value))
+
+function goToOrder(id: string | undefined) {
+  if (id) void router.push({ name: 'commande-detail', params: { id } })
+}
+
+async function submitConfirmation(source: AdminConfirmationSource) {
   if (!detail.value) return
   try {
-    await store.confirm(detail.value.id)
+    await store.confirm(detail.value.id, source)
+    confirmOpen.value = false
     snackbar.value = { show: true, text: 'Commande confirmée.', color: 'success' }
+  } catch (cause) {
+    // After a 409 refusal the detail was reloaded: close the dialog if the reload failed (no order left
+    // to confirm) or the order can no longer be confirmed. The error message stays.
+    if (!detail.value || !capabilities.value.canConfirm) confirmOpen.value = false
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
+async function submitResendCapi() {
+  // Vuetify's `loading` does not block Enter/Space on the focused button: guard against a double send.
+  if (!detail.value || actionLoading.value) return
+  try {
+    await store.resendCapiPurchase(detail.value.id)
+    resendCapiOpen.value = false
+    snackbar.value = { show: true, text: 'Conversion remise en file d’envoi.', color: 'success' }
+  } catch (cause) {
+    // After a 409 refusal the detail was reloaded: close the dialog if the reload failed or the
+    // conversion can no longer be resent. The error message stays.
+    if (!detail.value || !canResendCapi.value) resendCapiOpen.value = false
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
+async function submitUnreachable(note: string) {
+  if (!detail.value) return
+  try {
+    await store.markUnreachable(detail.value.id, note)
+    unreachableOpen.value = false
+    snackbar.value = { show: true, text: 'Commande marquée injoignable : elle est dans « À traiter ».', color: 'info' }
+  } catch (cause) {
+    snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
+  }
+}
+
+const trimmedNote = computed(() => noteText.value.trim())
+const canAddNote = computed(
+  () => Boolean(trimmedNote.value) && trimmedNote.value.length <= NOTE_MAX_LENGTH && !actionLoading.value,
+)
+
+async function submitNote() {
+  if (!detail.value || !canAddNote.value) return
+  try {
+    await store.addNote(detail.value.id, trimmedNote.value)
+    noteText.value = ''
+    snackbar.value = { show: true, text: 'Note ajoutée.', color: 'success' }
   } catch (cause) {
     snackbar.value = { show: true, text: orderActionErrorMessage(cause), color: 'error' }
   }
@@ -193,8 +326,21 @@ async function retryMessage(message: OrderMessage) {
   }
 }
 
+// La route réutilise le composant d'une commande à l'autre (préc/suiv) : on recharge
+// le détail à chaque changement d'id, pas seulement au montage. En quittant la page,
+// l'id disparaît de la route avant le démontage : rien à charger.
+watch(
+  () => route.params.id,
+  (id) => {
+    if (typeof id === 'string' && id) void store.fetchDetail(id)
+  },
+  { immediate: true },
+)
+
+// Prev/next only changes the route param (same component instance), so this runs on leaving the page.
+onBeforeUnmount(() => store.clearDetail())
+
 onMounted(() => {
-  void store.fetchDetail(orderId.value)
   // Résolution des noms livreur/transporteur (l'API ne renvoie que les ids).
   void couriersStore.ensureLoaded()
   void carriersStore.ensureLoaded()
@@ -203,15 +349,36 @@ onMounted(() => {
 
 <template>
   <section class="order-detail">
-    <v-btn
-      variant="text"
-      size="small"
-      prepend-icon="mdi-arrow-left"
-      class="mb-3"
-      @click="goBack"
-    >
-      Commandes
-    </v-btn>
+    <div class="d-flex align-center justify-space-between ga-2 mb-3">
+      <v-btn
+        variant="text"
+        size="small"
+        prepend-icon="mdi-arrow-left"
+        @click="goBack"
+      >
+        Commandes
+      </v-btn>
+      <div v-if="showNeighborNav" class="d-flex align-center ga-1">
+        <v-btn
+          variant="text"
+          size="small"
+          prepend-icon="mdi-chevron-left"
+          :disabled="!previousOrderId || detailLoading"
+          @click="goToOrder(previousOrderId)"
+        >
+          Précédente
+        </v-btn>
+        <v-btn
+          variant="text"
+          size="small"
+          append-icon="mdi-chevron-right"
+          :disabled="!nextOrderId || detailLoading"
+          @click="goToOrder(nextOrderId)"
+        >
+          Suivante
+        </v-btn>
+      </div>
+    </div>
 
     <v-progress-linear v-if="detailLoading && !detail" indeterminate color="primary" class="mb-4" />
 
@@ -291,6 +458,16 @@ onMounted(() => {
             Marquer livrée
           </v-btn>
           <v-btn
+            v-if="capabilities.canMarkUnreachable"
+            variant="outlined"
+            border="sm opacity-25"
+            prepend-icon="mdi-phone-off-outline"
+            :loading="actionLoading"
+            @click="unreachableOpen = true"
+          >
+            Injoignable
+          </v-btn>
+          <v-btn
             v-if="capabilities.canRemind"
             variant="outlined"
             border="sm opacity-25"
@@ -315,12 +492,67 @@ onMounted(() => {
             color="success"
             prepend-icon="mdi-check"
             :loading="actionLoading"
-            @click="confirmOrder"
+            @click="confirmOpen = true"
           >
             Confirmer
           </v-btn>
         </div>
       </div>
+
+      <!-- Numéro différent : tous les éléments pour décider -->
+      <v-card
+        v-if="isPhoneMismatch"
+        border
+        flat
+        rounded="lg"
+        color="error"
+        variant="tonal"
+        class="mb-5"
+        data-test="phone-mismatch"
+      >
+        <v-card-text>
+          <div class="d-flex align-center ga-2 mb-1">
+            <v-icon icon="mdi-phone-alert-outline" size="20" />
+            <span class="text-subtitle-1 font-weight-bold">Motif : Numéro différent</span>
+          </div>
+          <p class="text-body-2 mb-3">
+            Un message est arrivé d’un autre numéro que celui de la commande. Ne confirmez qu’après avoir appelé
+            le client au numéro de la commande.
+          </p>
+          <dl class="info-list">
+            <div><dt>Numéro de la commande</dt><dd>{{ formatPhone(detail.customerPhoneE164) }}</dd></div>
+            <div>
+              <dt>Numéro qui a écrit</dt>
+              <dd>{{ phoneMismatchSender.phone ? formatPhone(phoneMismatchSender.phone) : 'Numéro inconnu' }}</dd>
+            </div>
+            <div>
+              <dt>Texte reçu</dt>
+              <dd class="font-italic">
+                <template v-if="detail.lastCustomerMessageText">« {{ detail.lastCustomerMessageText }} »</template>
+                <template v-else>—</template>
+              </dd>
+            </div>
+            <div>
+              <dt>Reçu le</dt>
+              <dd>{{ formatDateTime(detail.lastCustomerMessageAt ?? phoneMismatchSender.detectedAt) }}</dd>
+            </div>
+          </dl>
+        </v-card-text>
+      </v-card>
+
+      <!-- Marqueur « autre numéro » conservé alors que le motif a changé -->
+      <v-alert
+        v-else-if="isCallRequired && capabilities.canConfirm"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        icon="mdi-phone-alert-outline"
+        class="mb-5"
+        data-test="phone-mismatch-reminder"
+      >
+        Message de confirmation reçu d’un autre numéro{{ detail.phoneMismatchAt ? ` le ${formatDateTime(detail.phoneMismatchAt)}` : '' }} :
+        confirmez uniquement après avoir appelé le client.
+      </v-alert>
 
       <div class="detail-grid">
         <!-- LEFT -->
@@ -449,6 +681,68 @@ onMounted(() => {
               <div class="amount-row"><span class="text-medium-emphasis">Source</span><span>{{ formatNullable(detail.sourceName) }}</span></div>
             </v-card-text>
           </v-card>
+
+          <!-- Conversion Meta (Chantier 5) : masquée tant que le backend n'envoie pas le statut. -->
+          <v-card v-if="hasCapiStatus" border flat rounded="lg">
+            <v-card-title class="d-flex align-center ga-2 text-subtitle-1 font-weight-bold">
+              <v-icon icon="mdi-facebook" color="primary" size="20" /> Conversion Meta
+            </v-card-title>
+            <v-card-text>
+              <StatusChip :table="capiPurchaseStatusMeta" :value="detail.capiPurchaseStatus" size="default" class="mb-3" />
+              <dl class="info-list">
+                <div v-if="detail.capiPurchaseSentAt"><dt>Envoyée le</dt><dd>{{ formatDateTime(detail.capiPurchaseSentAt) }}</dd></div>
+                <div v-if="capiValueLabel"><dt>Valeur envoyée</dt><dd>{{ capiValueLabel }}</dd></div>
+                <div v-if="capiSkipReasonLabel"><dt>Motif</dt><dd class="text-right">{{ capiSkipReasonLabel }}</dd></div>
+              </dl>
+              <v-alert
+                v-if="detail.capiPurchaseStatus === 'failed'"
+                type="error"
+                variant="tonal"
+                density="compact"
+                class="mt-3"
+              >
+                <span class="text-caption text-break">{{ hasText(detail.capiPurchaseError) ? detail.capiPurchaseError : 'Erreur inconnue' }}</span>
+              </v-alert>
+              <v-btn
+                v-if="canResendCapi"
+                block
+                variant="tonal"
+                color="primary"
+                prepend-icon="mdi-send-clock-outline"
+                class="mt-3"
+                :loading="actionLoading"
+                @click="resendCapiOpen = true"
+              >
+                Renvoyer la conversion
+              </v-btn>
+            </v-card-text>
+          </v-card>
+
+          <!-- Origine publicitaire (lecture seule) : masquée si aucun champ n'est renseigné. -->
+          <v-card v-if="hasAdOrigin" border flat rounded="lg">
+            <v-card-title class="d-flex align-center ga-2 text-subtitle-1 font-weight-bold">
+              <v-icon icon="mdi-bullhorn-outline" color="primary" size="20" /> Origine publicitaire
+            </v-card-title>
+            <v-card-text>
+              <v-chip
+                v-if="hasText(detail.fbclid)"
+                size="small"
+                color="info"
+                variant="tonal"
+                prepend-icon="mdi-facebook"
+                class="mb-3"
+              >
+                Clic Facebook
+              </v-chip>
+              <dl class="info-list">
+                <div v-if="hasText(detail.campaignId)"><dt>Campagne</dt><dd class="text-right text-break">{{ detail.campaignId }}</dd></div>
+                <div v-if="hasText(detail.adsetId)"><dt>Ensemble de pubs</dt><dd class="text-right text-break">{{ detail.adsetId }}</dd></div>
+                <div v-if="hasText(detail.adId)"><dt>Pub</dt><dd class="text-right text-break">{{ detail.adId }}</dd></div>
+                <div v-if="hasText(detail.utmSource)"><dt>Source UTM</dt><dd class="text-right text-break">{{ detail.utmSource }}</dd></div>
+                <div v-if="hasText(detail.utmMedium)"><dt>Support UTM</dt><dd class="text-right text-break">{{ detail.utmMedium }}</dd></div>
+              </dl>
+            </v-card-text>
+          </v-card>
         </div>
 
         <!-- RIGHT -->
@@ -461,7 +755,10 @@ onMounted(() => {
             <v-card-text>
               <StatusChip :table="customerConfirmationStatusMeta" :value="detail.customerConfirmationStatus" size="default" class="mb-3" />
               <dl class="info-grid">
-                <div><dt>Source</dt><dd>{{ formatNullable(detail.confirmationSource) }}</dd></div>
+                <div>
+                  <dt>Source</dt>
+                  <dd>{{ detail.confirmationSource ? lookupMeta(confirmationSourceMeta, detail.confirmationSource).label : formatNullable(null) }}</dd>
+                </div>
                 <div><dt>Date décision</dt><dd>{{ formatDateTime(detail.confirmedAt ?? detail.confirmationCancelledAt) }}</dd></div>
                 <div><dt>Relances</dt><dd>{{ formatNullable(detail.reminderCount ?? 0) }}</dd></div>
                 <div><dt>Dernière relance</dt><dd>{{ formatDateTime(detail.lastReminderAt) }}</dd></div>
@@ -537,6 +834,41 @@ onMounted(() => {
             </v-card-text>
           </v-card>
 
+          <!-- Notes libres (F16) : ajoutées à l'historique avec auteur et date. -->
+          <v-card border flat rounded="lg">
+            <v-card-title class="d-flex align-center ga-2 text-subtitle-1 font-weight-bold">
+              <v-icon icon="mdi-note-text-outline" color="primary" size="20" /> Ajouter une note
+            </v-card-title>
+            <v-card-text>
+              <v-textarea
+                v-model="noteText"
+                placeholder="Ex. : livrer chez son frère, rappeler après 18 h, nouvelle adresse…"
+                rows="2"
+                auto-grow
+                hide-details="auto"
+                counter
+                :counter-value="(value: string) => (value ?? '').trim().length"
+                :maxlength="NOTE_MAX_LENGTH"
+                aria-label="Note sur la commande"
+                @keydown.ctrl.enter="submitNote"
+                @keydown.meta.enter="submitNote"
+              />
+              <div class="d-flex align-center justify-space-between ga-3 mt-3">
+                <span class="text-caption text-medium-emphasis">Visible dans l’historique, avec votre nom et la date.</span>
+                <v-btn
+                  color="primary"
+                  variant="tonal"
+                  prepend-icon="mdi-plus"
+                  :disabled="!canAddNote"
+                  :loading="actionLoading && Boolean(trimmedNote)"
+                  @click="submitNote"
+                >
+                  Ajouter
+                </v-btn>
+              </div>
+            </v-card-text>
+          </v-card>
+
           <!-- Timeline opérationnelle -->
           <v-card v-if="detailEvents.length" border flat rounded="lg">
             <v-card-title class="d-flex align-center ga-2 text-subtitle-1 font-weight-bold">
@@ -560,6 +892,9 @@ onMounted(() => {
                   <div v-if="event.actorName" class="text-caption text-medium-emphasis">
                     par {{ event.actorName }}
                   </div>
+                  <div v-if="skipReasonLabel(event)" class="text-caption text-medium-emphasis">
+                    Motif : {{ skipReasonLabel(event) }}
+                  </div>
                   <div v-if="event.note" class="text-body-2 font-italic mt-1">« {{ event.note }} »</div>
                 </v-timeline-item>
               </v-timeline>
@@ -568,7 +903,7 @@ onMounted(() => {
 
           <!-- Dernier message client -->
           <v-card
-            v-if="detail.lastCustomerMessageText"
+            v-if="detail.lastCustomerMessageText && !isPhoneMismatch"
             border
             flat
             rounded="lg"
@@ -595,7 +930,7 @@ onMounted(() => {
               <div v-if="detailSummary" class="d-flex flex-wrap ga-2 mb-4">
                 <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-whatsapp">{{ detailSummary.byChannel.whatsapp ?? 0 }} WhatsApp</v-chip>
                 <v-chip size="small" variant="tonal" color="info" prepend-icon="mdi-message-text-outline">{{ detailSummary.byChannel.sms ?? 0 }} SMS</v-chip>
-                <v-chip size="small" variant="tonal" color="error" prepend-icon="mdi-alert-circle-outline">{{ detailSummary.byStatus.failed ?? 0 }} échec(s)</v-chip>
+                <v-chip size="small" variant="tonal" color="error" prepend-icon="mdi-alert-circle-outline">{{ failedMessageCount }} échec(s)</v-chip>
               </div>
 
               <p v-if="!detailMessages.length" class="text-body-2 text-medium-emphasis mb-0">
@@ -606,7 +941,7 @@ onMounted(() => {
                 <v-timeline-item
                   v-for="message in detailMessages"
                   :key="message.id"
-                  :dot-color="lookupMeta(messageStatusMeta, message.status).color"
+                  :dot-color="isDeliberatelyNotSent(message) ? notSentMessageMeta.color : lookupMeta(messageStatusMeta, message.status).color"
                   size="x-small"
                 >
                   <div class="message-item">
@@ -621,7 +956,22 @@ onMounted(() => {
                       </v-chip>
                       <span class="text-caption text-medium-emphasis">{{ formatProvider(message.provider) }}</span>
                       <v-spacer />
+                      <v-tooltip v-if="isDeliberatelyNotSent(message)" :text="message.errorMessage ?? message.errorCode" location="top">
+                        <template #activator="{ props: tooltipProps }">
+                          <v-chip
+                            v-bind="tooltipProps"
+                            size="x-small"
+                            variant="tonal"
+                            :color="notSentMessageMeta.color"
+                            :prepend-icon="notSentMessageMeta.icon"
+                            data-test="not-sent"
+                          >
+                            {{ notSentMessageMeta.label }}
+                          </v-chip>
+                        </template>
+                      </v-tooltip>
                       <span
+                        v-else
                         class="text-caption font-weight-medium d-inline-flex align-center ga-1"
                         :class="`text-${lookupMeta(messageStatusMeta, message.status).color}`"
                       >
@@ -637,7 +987,7 @@ onMounted(() => {
                       « {{ message.body }} »
                     </v-sheet>
                     <v-alert
-                      v-if="message.status === 'failed'"
+                      v-if="message.status === 'failed' && !isDeliberatelyNotSent(message)"
                       type="error"
                       variant="tonal"
                       density="compact"
@@ -709,6 +1059,47 @@ onMounted(() => {
       :reasons="['Client injoignable', 'Adresse introuvable', 'Client absent', 'Refus à la livraison', 'Autre']"
       :submitting="actionLoading"
       @confirm="submitFailure"
+    />
+
+    <ConfirmOrderDialog
+      v-model="confirmOpen"
+      :order-name="detail?.shopifyOrderName"
+      :call-only="isCallRequired"
+      :order-phone="detail?.customerPhoneE164 ? formatPhone(detail.customerPhoneE164) : undefined"
+      :submitting="actionLoading"
+      @confirm="submitConfirmation"
+    />
+
+    <v-dialog v-model="resendCapiOpen" max-width="460" persistent>
+      <v-card>
+        <v-card-title class="d-flex align-center ga-3">
+          <v-avatar color="primary" variant="tonal" rounded="lg" size="40">
+            <v-icon icon="mdi-send-clock-outline" />
+          </v-avatar>
+          Renvoyer la conversion
+        </v-card-title>
+        <v-card-text class="text-body-2">
+          La conversion Meta de la commande {{ detail?.shopifyOrderName }} sera remise en file d’envoi.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="actionLoading" @click="resendCapiOpen = false">Retour</v-btn>
+          <v-btn color="primary" :loading="actionLoading" @click="submitResendCapi">Renvoyer</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <OrderReasonDialog
+      v-model="unreachableOpen"
+      title="Client injoignable —"
+      :order-name="detail?.shopifyOrderName"
+      label="Ce qui s’est passé"
+      icon="mdi-phone-off-outline"
+      color="primary"
+      confirm-text="Marquer injoignable"
+      :reasons="['Ne répond pas', 'Messagerie', 'Numéro éteint', 'Ligne occupée']"
+      :submitting="actionLoading"
+      @confirm="submitUnreachable"
     />
 
     <OrderReasonDialog

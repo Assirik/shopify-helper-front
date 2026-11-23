@@ -2,8 +2,10 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ordersService, type OrderListParams } from '@/services/orders.service'
 import { toApiFailure } from '@/services/errors'
+import { requiresCallConfirmation } from '@/constants/status'
 import {
   orderActionCapabilities,
+  type AdminConfirmationSource,
   type BulkOrderResult,
   type DeliverOrderPayload,
   type DispatchOrderPayload,
@@ -19,22 +21,28 @@ import {
 export interface OrderFilters {
   orderName: string
   phone: string
+  /** Recherche unifiée lancée depuis la barre du haut. */
+  search: string
   customerConfirmationStatus: string | null
   operationalStatus: string | null
   status: string | null
   cod: boolean | null
   /** Masque les commandes terminées (livrées ET payées) — activé par défaut. */
   hideCompleted: boolean
+  /** Masque les commandes annulées — activé par défaut. */
+  hideCancelled: boolean
 }
 
 const emptyFilters = (): OrderFilters => ({
   orderName: '',
   phone: '',
+  search: '',
   customerConfirmationStatus: null,
   operationalStatus: null,
   status: null,
   cod: null,
   hideCompleted: true,
+  hideCancelled: true,
 })
 
 /** Capabilities d'une ligne : API si présente, sinon repli local. */
@@ -65,16 +73,32 @@ export const useOrdersStore = defineStore('orders', () => {
   let detailSequence = 0
 
   const selectedOrders = computed(() => items.value.filter(o => selectedIds.value.includes(o.id)))
+  // « Numéro différent » est exclu de la confirmation groupée : elle exige un appel au client,
+  // commande par commande (fenêtre « Par appel »).
   const selectedConfirmableIds = computed(() =>
     selectedOrders.value
-      .filter(o => lineCapabilities(o).canConfirm)
+      .filter(o => lineCapabilities(o).canConfirm && !requiresCallConfirmation(o))
       .map(o => o.id),
+  )
+  // Only orders that can still be confirmed count: an already confirmed order has nothing left to call about.
+  const selectedPhoneMismatchCount = computed(
+    () => selectedOrders.value.filter(o => lineCapabilities(o).canConfirm && requiresCallConfirmation(o)).length,
   )
   const selectedRemindableIds = computed(() =>
     selectedOrders.value
       .filter(o => lineCapabilities(o).canRemind)
       .map(o => o.id),
   )
+
+  // Navigation préc/suiv depuis le détail : voisins dans la page courante de la liste
+  // (ordre et filtres du serveur). Pas de passage à la page suivante en v1.
+  const isInList = (orderId: string) => items.value.some(o => o.id === orderId)
+  const neighborId = (orderId: string, offset: -1 | 1) => {
+    const index = items.value.findIndex(o => o.id === orderId)
+    return index === -1 ? undefined : items.value[index + offset]?.id
+  }
+  const prevId = (orderId: string) => neighborId(orderId, -1)
+  const nextId = (orderId: string) => neighborId(orderId, 1)
 
   function setMutating(orderIds: string[], active: boolean) {
     const next = new Set(mutatingIds.value)
@@ -89,11 +113,13 @@ export const useOrdersStore = defineStore('orders', () => {
     }
     if (filters.orderName.trim()) params.orderName = filters.orderName.trim()
     if (filters.phone.trim()) params.phone = filters.phone.trim()
+    if (filters.search.trim()) params.search = filters.search.trim()
     if (filters.customerConfirmationStatus) params.customerConfirmationStatus = filters.customerConfirmationStatus
     if (filters.operationalStatus) params.operationalStatus = filters.operationalStatus
     if (filters.status) params.status = filters.status
     if (filters.cod !== null) params.cod = filters.cod
     if (filters.hideCompleted) params.hideCompleted = true
+    if (filters.hideCancelled) params.hideCancelled = true
     return params
   }
 
@@ -166,18 +192,46 @@ export const useOrdersStore = defineStore('orders', () => {
     }
   }
 
+  // Called when leaving the detail page: `detail` must not outlive it, otherwise an action taken
+  // from the list would reload the stale detail instead of the list. Bumping the sequence drops
+  // any detail request still in flight.
+  function clearDetail() {
+    detailSequence++
+    detailLoading.value = false
+    detailErrorCode.value = ''
+    detail.value = null
+    detailMessages.value = []
+    detailSummary.value = null
+    detailEvents.value = []
+    detailCapabilities.value = null
+  }
+
+  // Reload the detail when it is the one displayed, otherwise the list.
+  async function refreshAfterAction(orderId: string) {
+    if (detail.value?.id === orderId) await fetchDetail(orderId)
+    else await fetchList()
+  }
+
   async function runUnitAction(orderId: string, action: () => Promise<unknown>) {
     setMutating([orderId], true)
     try {
       await action()
-      if (detail.value?.id === orderId) await fetchDetail(orderId)
-      else await fetchList()
+      await refreshAfterAction(orderId)
+    } catch (cause) {
+      // 409 refusal: the order changed server-side (e.g. flagged "phone mismatch" while the screen
+      // was open). Reload so the screen does not stay stale.
+      if (toApiFailure(cause).status === 409) await refreshAfterAction(orderId)
+      throw cause
     } finally {
       setMutating([orderId], false)
     }
   }
 
-  const confirm = (orderId: string) => runUnitAction(orderId, () => ordersService.confirm(orderId))
+  const confirm = (orderId: string, source?: AdminConfirmationSource) =>
+    runUnitAction(orderId, () => ordersService.confirm(orderId, source))
+  const addNote = (orderId: string, text: string) => runUnitAction(orderId, () => ordersService.addNote(orderId, text))
+  const markUnreachable = (orderId: string, note?: string) =>
+    runUnitAction(orderId, () => ordersService.markUnreachable(orderId, note))
   const remind = (orderId: string) => runUnitAction(orderId, () => ordersService.remind(orderId))
   const cancel = (orderId: string, reason: string) =>
     runUnitAction(orderId, () => ordersService.cancel(orderId, reason))
@@ -189,6 +243,8 @@ export const useOrdersStore = defineStore('orders', () => {
     runUnitAction(orderId, () => ordersService.markDeliveryFailed(orderId, reason))
   const markReturned = (orderId: string, reason: string) =>
     runUnitAction(orderId, () => ordersService.markReturned(orderId, reason))
+  const resendCapiPurchase = (orderId: string) =>
+    runUnitAction(orderId, () => ordersService.resendCapiPurchase(orderId))
 
   async function runBulk(orderIds: string[], action: (ids: string[]) => Promise<BulkOrderResult>) {
     if (!orderIds.length) return undefined
@@ -215,6 +271,7 @@ export const useOrdersStore = defineStore('orders', () => {
     mutatingIds,
     selectedIds,
     detail,
+    clearDetail,
     detailMessages,
     detailSummary,
     detailEvents,
@@ -223,7 +280,11 @@ export const useOrdersStore = defineStore('orders', () => {
     detailErrorCode,
     selectedOrders,
     selectedConfirmableIds,
+    selectedPhoneMismatchCount,
     selectedRemindableIds,
+    isInList,
+    prevId,
+    nextId,
     fetchList,
     applyFilters,
     resetFilters,
@@ -231,12 +292,15 @@ export const useOrdersStore = defineStore('orders', () => {
     setLimit,
     fetchDetail,
     confirm,
+    addNote,
+    markUnreachable,
     remind,
     cancel,
     dispatch,
     deliver,
     markDeliveryFailed,
     markReturned,
+    resendCapiPurchase,
     bulkConfirm,
     bulkRemind,
   }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { palettes } from '@/theme/palettes'
@@ -8,6 +8,7 @@ import { useAttentionStore } from '@/stores/attention'
 import { lookupMeta, roleMeta } from '@/constants/status'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const themeStore = useThemeStore()
 const attentionStore = useAttentionStore()
@@ -28,6 +29,26 @@ const userInitials = computed(() => {
 
 // Sidebar repliable (rail = mode icônes seules)
 const rail = ref(false)
+
+// Recherche globale : ouvre la liste des commandes filtrée par `?search=`. Le champ
+// reflète la recherche active quand on est sur cette liste.
+const searchText = ref<string | null>('')
+watch(
+  () => route.query.search,
+  (value) => {
+    searchText.value = typeof value === 'string' ? value : ''
+  },
+  { immediate: true },
+)
+
+function submitSearch() {
+  const search = (searchText.value ?? '').trim()
+  if (search) {
+    void router.push({ name: 'commandes', query: { search } })
+  } else if (route.query.search) {
+    void router.replace({ query: { ...route.query, search: undefined } })
+  }
+}
 
 // Items de navigation principaux — le compteur "À traiter" est branché sur le store.
 const navItems = computed(() => [
@@ -96,19 +117,26 @@ onMounted(() => {
 
     <v-spacer />
 
-    <!-- Recherche globale (placeholder, non branchée) -->
-    <v-responsive max-width="550" class="mr-2 d-none d-sm-flex">
-      <v-text-field
-        density="comfortable"
-        flat
-        hide-details
-        variant="outlined"
-        bg-color="grey-lighten-3"
-        color="text-secondary"
-        glow
-        placeholder="Rechercher (commande, téléphone, client)…"
-        prepend-inner-icon="mdi-magnify"
-      />
+    <!-- Recherche globale : Entrée ou bouton → liste des commandes filtrée. -->
+    <v-responsive max-width="640" class="mr-2 d-none d-sm-flex">
+      <form class="d-flex align-center ga-2 w-100" role="search" @submit.prevent="submitSearch">
+        <v-text-field
+          v-model="searchText"
+          density="comfortable"
+          flat
+          hide-details
+          variant="outlined"
+          bg-color="grey-lighten-3"
+          color="text-secondary"
+          glow
+          clearable
+          aria-label="Rechercher une commande"
+          placeholder="Commande, client, téléphone, email ou article…"
+          prepend-inner-icon="mdi-magnify"
+          @click:clear="submitSearch"
+        />
+        <v-btn type="submit" color="primary" variant="flat" height="48" class="px-5">Rechercher</v-btn>
+      </form>
     </v-responsive>
 
     <v-spacer/>

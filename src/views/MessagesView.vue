@@ -10,6 +10,8 @@ import {
   templatePurposeMeta,
   providerLabel,
   formatProvider,
+  isDeliberatelyNotSent,
+  notSentMessageMeta,
 } from '@/constants/status'
 import { formatDateTime, formatNullable } from '@/utils/format'
 import { messageRetryErrorMessage } from '@/utils/orderErrors'
@@ -207,7 +209,20 @@ onMounted(() => {
         </template>
 
         <template #item.status="{ item }">
-          <StatusChip :table="messageStatusMeta" :value="item.status" />
+          <v-tooltip v-if="isDeliberatelyNotSent(item)" :text="item.errorMessage ?? item.errorCode" location="top">
+            <template #activator="{ props }">
+              <v-chip
+                v-bind="props"
+                size="small"
+                variant="tonal"
+                :color="notSentMessageMeta.color"
+                :prepend-icon="notSentMessageMeta.icon"
+              >
+                {{ notSentMessageMeta.label }}
+              </v-chip>
+            </template>
+          </v-tooltip>
+          <StatusChip v-else :table="messageStatusMeta" :value="item.status" />
         </template>
 
         <template #item.attemptCount="{ item }">
@@ -220,7 +235,7 @@ onMounted(() => {
 
         <template #item.actions="{ item }">
           <div class="d-flex justify-end" @click.stop>
-            <v-tooltip v-if="item.status === 'failed'" text="Réessayer" location="top">
+            <v-tooltip v-if="item.status === 'failed' && !isDeliberatelyNotSent(item)" text="Réessayer" location="top">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"

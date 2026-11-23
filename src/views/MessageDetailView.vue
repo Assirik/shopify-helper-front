@@ -9,6 +9,8 @@ import {
   templatePurposeMeta,
   lookupMeta,
   formatProvider,
+  isDeliberatelyNotSent,
+  notSentMessageMeta,
 } from '@/constants/status'
 import { formatDateTime, formatNullable } from '@/utils/format'
 import { messageRetryErrorMessage } from '@/utils/orderErrors'
@@ -24,7 +26,9 @@ const snackbar = ref({ show: false, text: '', color: 'neutral' })
 const showRawJson = ref(false)
 
 const retrying = computed(() => (detail.value ? store.mutatingIds.includes(detail.value.id) : false))
-const isFailed = computed(() => detail.value?.status === 'failed')
+// Non-envoi volontaire (commande déjà traitée…) : ni échec ni « Réessayer ».
+const isNotSent = computed(() => (detail.value ? isDeliberatelyNotSent(detail.value) : false))
+const isFailed = computed(() => detail.value?.status === 'failed' && !isNotSent.value)
 
 const providerResponseText = computed(() => {
   const raw = detail.value?.providerResponse
@@ -90,7 +94,15 @@ onMounted(() => {
             <div class="min-w-0">
               <div class="d-flex align-center ga-3 flex-wrap mb-2">
                 <h1 class="text-h6 font-weight-bold">Message {{ detail.id }}</h1>
-                <StatusChip :table="messageStatusMeta" :value="detail.status" size="default" />
+                <v-chip
+                  v-if="isNotSent"
+                  variant="tonal"
+                  :color="notSentMessageMeta.color"
+                  :prepend-icon="notSentMessageMeta.icon"
+                >
+                  {{ notSentMessageMeta.label }}
+                </v-chip>
+                <StatusChip v-else :table="messageStatusMeta" :value="detail.status" size="default" />
               </div>
               <div class="d-flex align-center ga-2 flex-wrap text-body-2 text-medium-emphasis">
                 <span>Commande</span>
@@ -185,6 +197,13 @@ onMounted(() => {
               <code v-if="detail.errorCode" class="payload">{{ detail.errorCode }}</code>
             </div>
             <div class="text-body-2">{{ formatNullable(detail.errorMessage) }}</div>
+          </v-alert>
+          <v-alert v-else-if="isNotSent" type="info" variant="tonal" density="compact" color="neutral" class="mb-4">
+            <div class="d-flex align-center ga-2 mb-1">
+              <span class="font-weight-bold">{{ notSentMessageMeta.label }}</span>
+              <code v-if="detail.errorCode" class="payload">{{ detail.errorCode }}</code>
+            </div>
+            <div v-if="detail.errorMessage" class="text-body-2">{{ detail.errorMessage }}</div>
           </v-alert>
           <v-alert v-else type="success" variant="tonal" density="compact" class="mb-4">
             Message accepté par le provider, sans erreur.

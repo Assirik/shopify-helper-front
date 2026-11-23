@@ -1,5 +1,9 @@
 import { toApiFailure } from '@/services/errors'
 
+/** API code of the "agent confirmation outside a call" refusal, and its short label (bulk summary). */
+export const CALL_REQUIRED_CODE = 'PhoneMismatchRequiresCall'
+export const CALL_REQUIRED_LABEL = 'à confirmer par appel'
+
 const ORDER_ACTION_MESSAGES: Record<string, string> = {
   OrderNotFound: 'Commande introuvable.',
   OrderConfirmationNotAllowed: 'Cette commande ne peut plus être confirmée.',
@@ -33,6 +37,17 @@ const ORDER_ACTION_MESSAGES: Record<string, string> = {
   InvalidCourierFee: 'La rémunération livreur est invalide (ou supérieure à l’encaissé).',
   InvalidCarrierFee: 'Le coût transporteur est invalide (ou supérieur à l’encaissé).',
   InvalidReconciliationDate: 'Date de rapprochement invalide.',
+  [CALL_REQUIRED_CODE]: 'Cette commande doit être confirmée par appel.',
+  InvalidConfirmationSource: 'Source de confirmation invalide.',
+  OrderUnreachableNotAllowed: 'Seule une commande en attente de confirmation peut être marquée injoignable.',
+  AdminRequired: 'Cette action est réservée aux administrateurs.',
+  CapiPurchaseAlreadySent: 'La conversion a déjà été envoyée à Meta.',
+  CapiPurchaseNotResendable: 'Cette conversion ne peut pas être renvoyée.',
+  CapiPurchaseTooOld: 'Commande trop ancienne : Meta refuserait la conversion (plus de 7 jours).',
+  CapiPurchaseMayHaveBeenReceived: 'Meta a peut-être déjà reçu cette conversion : la renvoyer créerait un doublon.',
+  CapiDisabled: 'L’envoi à Meta est désactivé.',
+  NoteTextRequired: 'La note est vide.',
+  NoteTextTooLong: 'La note est trop longue (5 000 caractères maximum).',
 }
 
 /** Message FR lisible pour une erreur d'action commande (confirm/remind/cancel). */

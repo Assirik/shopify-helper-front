@@ -57,6 +57,53 @@ export const messageStatusMeta: Record<string, StatusMeta> = {
   failed: { label: 'Échec', color: 'error', icon: 'mdi-alert-circle-outline' },
 }
 
+/**
+ * Codes d'erreur d'un message `failed` qui n'est PAS un échec : le backend a volontairement
+ * renoncé à l'envoyer (commande déjà traitée, demande déjà partie, notification ignorée).
+ * Aucun « Réessayer », et ces messages ne comptent pas dans « N échec(s) ».
+ */
+export const DELIBERATELY_NOT_SENT_ERROR_CODES: readonly string[] = [
+  'ORDER_NO_LONGER_PENDING',
+  'CONFIRMATION_REQUEST_ALREADY_SENT',
+  'NOTIFICATION_SKIPPED',
+]
+
+/** Puce neutre d'un message volontairement non envoyé. */
+export const notSentMessageMeta: StatusMeta = {
+  label: 'Non envoyée (commande déjà traitée)',
+  color: 'neutral',
+  icon: 'mdi-debug-step-over',
+}
+
+/** Vrai pour un message `failed` dont le code d'erreur est un non-envoi volontaire. */
+export const isDeliberatelyNotSent = (message: { status: string; errorCode?: string }): boolean =>
+  message.status === 'failed' &&
+  Boolean(message.errorCode) &&
+  DELIBERATELY_NOT_SENT_ERROR_CODES.includes(message.errorCode as string)
+
+/** Motif « À traiter » dont la confirmation passe obligatoirement par un appel au client. */
+export const PHONE_MISMATCH_REASON = 'phone_mismatch'
+
+/**
+ * Vrai si la commande ne peut être confirmée que par appel : motif courant « Numéro différent »
+ * ou marqueur `phoneMismatchAt` (posé à la réception du message et jamais effacé, même si le motif
+ * change ensuite). `reason` couvre les éléments de la file « À traiter ».
+ */
+export const requiresCallConfirmation = (order: {
+  attentionReasonCode?: string | null
+  reason?: string | null
+  phoneMismatchAt?: string | null
+}): boolean =>
+  order.attentionReasonCode === PHONE_MISMATCH_REASON ||
+  order.reason === PHONE_MISMATCH_REASON ||
+  Boolean(order.phoneMismatchAt)
+
+export const phoneMismatchMeta: StatusMeta = {
+  label: 'Numéro différent',
+  color: 'error',
+  icon: 'mdi-phone-alert-outline',
+}
+
 /** Canal d'un message. */
 export const channelMeta: Record<string, StatusMeta> = {
   whatsapp: { label: 'WhatsApp', color: 'success', icon: 'mdi-whatsapp' },
@@ -99,6 +146,22 @@ export const codPaymentStatusMeta: Record<string, StatusMeta> = {
   unpaid: { label: 'Non encaissé', color: 'error', icon: 'mdi-cash-remove' },
 }
 
+/** Statut de l'envoi de la conversion à Meta (`capiPurchaseStatus`). */
+export const capiPurchaseStatusMeta: Record<string, StatusMeta> = {
+  sent: { label: 'Envoyée', color: 'success', icon: 'mdi-check' },
+  pending: { label: 'En attente', color: 'warning', icon: 'mdi-clock-outline' },
+  failed: { label: 'Échec', color: 'error', icon: 'mdi-alert-circle-outline' },
+  skipped: { label: 'Ignorée', color: 'neutral', icon: 'mdi-debug-step-over' },
+}
+
+/** Reason a conversion was skipped: `Order.capiSkipReason`, or the `reason` metadata of a `capi_purchase_skipped` event. */
+export const capiSkipReasonMeta: Record<string, StatusMeta> = {
+  test: { label: 'Commande de test', color: 'neutral' },
+  cancelled: { label: 'Commande annulée ou non confirmée', color: 'neutral' },
+  disabled: { label: 'Envoi à Meta désactivé', color: 'neutral' },
+  too_old: { label: 'Commande trop ancienne (plus de 7 jours)', color: 'neutral' },
+}
+
 /** Canal de livraison (`deliveryChannel`). */
 export const deliveryChannelMeta: Record<string, StatusMeta> = {
   internal: { label: 'Livreur interne', color: 'primary', icon: 'mdi-moped-outline' },
@@ -115,6 +178,19 @@ export const orderEventTypeMeta: Record<string, StatusMeta> = {
   delivery_failed: { label: 'Échec de livraison', color: 'error', icon: 'mdi-alert-circle-outline' },
   returned: { label: 'Retour', color: 'neutral', icon: 'mdi-keyboard-return' },
   payment_recorded: { label: 'Encaissement enregistré', color: 'primary', icon: 'mdi-cash-register' },
+  note: { label: 'Note', color: 'neutral', icon: 'mdi-note-text-outline' },
+  capi_purchase_sent: { label: 'Conversion Meta envoyée', color: 'success', icon: 'mdi-send-check-outline' },
+  capi_purchase_failed: { label: 'Conversion Meta en échec', color: 'error', icon: 'mdi-alert-circle-outline' },
+  capi_purchase_skipped: { label: 'Conversion Meta ignorée', color: 'neutral', icon: 'mdi-debug-step-over' },
+  capi_purchase_resend_requested: { label: 'Renvoi de la conversion Meta demandé', color: 'warning', icon: 'mdi-send-clock-outline' },
+  phone_mismatch: { label: 'Numéro WhatsApp différent', color: 'warning', icon: 'mdi-phone-alert-outline' },
+}
+
+/** Source d'une confirmation (`confirmationSource`). */
+export const confirmationSourceMeta: Record<string, StatusMeta> = {
+  whatsapp_button: { label: 'Bouton WhatsApp', color: 'success', icon: 'mdi-whatsapp' },
+  phone_call: { label: 'Appel téléphonique', color: 'primary', icon: 'mdi-phone-outline' },
+  admin: { label: 'Agent (sans appel)', color: 'neutral', icon: 'mdi-account-check-outline' },
 }
 
 /** Rôle d'un utilisateur du helpdesk. */
