@@ -327,7 +327,7 @@ onMounted(() => {
 
         <template #item.reason="{ item }">
           <v-chip :color="reasonMeta(item.reason).color" size="small" variant="tonal" :border="`${reasonMeta(item.reason).color} sm opacity-50`">
-            <strong>{{ reasonMeta(item.reason).label }}x </strong>
+            <strong>{{ reasonMeta(item.reason).label }}</strong>
           </v-chip>
         </template>
 
